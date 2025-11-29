@@ -2,13 +2,13 @@
 /**
  * Database Admin Tool - Professional Edition
  * A single-file database management system with modern, responsive UI
- * Version: 1.0.1
- * Kenneth D'silva (Modracx), Copyright (c) Novenber 2025
+ * Version: 1.0.2
+ * Kenneth D'silva (Modracx), Copyright (c) November 2025
  * Licensed under the MIT License – https://opensource.org/licenses/MIT
  */
 
 // Configuration
-define('DB_ADMIN_VERSION', '1.0.1');
+define('DB_ADMIN_VERSION', '1.0.2');
 define('SESSION_TIMEOUT', 3600);
 
 // Start session
@@ -208,16 +208,21 @@ function get_connection()
 
 // Handle login
 if (isset($_POST['login'])) {
+    $db_name_input = get_post('db_name');
     $result = login(
         get_post('db_type'),
         get_post('db_host'),
         get_post('db_user'),
         get_post('db_pass'),
-        get_post('db_name')
+        $db_name_input
     );
 
     if ($result === true) {
-        redirect('?page=databases');
+        if (!empty($db_name_input)) {
+            redirect('?page=tables&db=' . urlencode($db_name_input));
+        } else {
+            redirect('?page=databases');
+        }
     } else {
         $error = $result;
     }
