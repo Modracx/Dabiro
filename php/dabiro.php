@@ -2,13 +2,13 @@
 /**
  * Dabiro - Professional Database Management System
  * A single-file, zero-dependency database manager with a modern, responsive interface.
- * Version: 1.2.1
+ * Version: 1.4.1
  * Kenneth D'silva (Modracx), Copyright (c) November 2025
  * Licensed under the MIT License – https://opensource.org/licenses/MIT
  */
 
 // ─── Configuration & Session ──────────────────────────────────────────────────
-define('DB_ADMIN_VERSION', '1.2.1');
+define('DB_ADMIN_VERSION', '1.4.1');
 define('SESSION_TIMEOUT', 3600);
 
 if (session_status() === PHP_SESSION_NONE) {
@@ -71,16 +71,27 @@ $TRANSLATIONS = [
     'en' => [
         'app_name' => 'Dabiro',
         'app_tagline' => 'Professional Database Management Interface',
-        'database_type_label' => 'Database Type',
-        'host_label' => 'Host / File Path',
+        'database_type_label' => 'Database Engine',
+        'host_label' => 'Host / Server',
         'port_label' => 'Port',
         'username_label' => 'Username',
         'password_label' => 'Password',
         'database_name_label' => 'Database Name (optional)',
-        'ssl_label' => 'Require SSL / TLS Encryption (Remote Database)',
+        'ssl_label' => 'Require SSL / TLS Encryption',
+        'ssl_hint' => 'For cloud databases (AWS RDS, PlanetScale, Neon, Supabase)',
         'connect_button' => 'Connect to Database',
-        'connect_uri_label' => 'Or Paste Connection URL (e.g. postgres://... or mysql://...)',
-        'saved_connections' => 'Saved Connections',
+        'connect_uri_label' => 'Connection URL / URI',
+        'saved_connections' => 'Saved Profiles',
+        'direct_tab' => 'Direct',
+        'ssh_tab' => 'SSH Tunnel',
+        'uri_tab' => 'Connection URI',
+        'profiles_tab' => 'Saved',
+        'ssh_host_label' => 'SSH Host',
+        'ssh_port_label' => 'SSH Port',
+        'ssh_user_label' => 'SSH User',
+        'ssh_auth_label' => 'SSH Auth Method',
+        'ssh_pass_label' => 'SSH Password',
+        'ssh_key_label' => 'SSH Private Key (PEM/OpenSSH)',
         'logout' => 'Logout',
         'databases' => 'Databases',
         'tables' => 'Tables',
@@ -96,6 +107,12 @@ $TRANSLATIONS = [
         'table_name' => 'Table Name',
         'columns' => 'Columns',
         'add_column' => 'Add Column',
+        'edit_column' => 'Edit Column',
+        'drop_column' => 'Drop Column',
+        'indexes' => 'Indexes & Keys',
+        'add_index' => 'Add Index',
+        'foreign_keys' => 'Foreign Keys',
+        'add_foreign_key' => 'Add Foreign Key',
         'add_condition' => 'Add Condition',
         'rename_table' => 'Rename Table',
         'copy_table' => 'Copy Table',
@@ -149,91 +166,6 @@ $TRANSLATIONS = [
         'rows' => 'Rows',
         'records' => 'Records',
         'server' => 'Server'
-    ],
-    'es' => [
-        'app_name' => 'Dabiro',
-        'app_tagline' => 'Interfaz profesional de gestión de bases de datos',
-        'database_type_label' => 'Tipo de Base de Datos',
-        'host_label' => 'Servidor / Ruta de Archivo',
-        'port_label' => 'Puerto',
-        'username_label' => 'Usuario',
-        'password_label' => 'Contraseña',
-        'database_name_label' => 'Nombre de Base de Datos (opcional)',
-        'ssl_label' => 'Requerir cifrado SSL / TLS (Remoto)',
-        'connect_button' => 'Conectar a la Base de Datos',
-        'connect_uri_label' => 'O Pegar URL de Conexión',
-        'saved_connections' => 'Conexiones Guardadas',
-        'logout' => 'Cerrar Sesión',
-        'databases' => 'Bases de Datos',
-        'tables' => 'Tablas',
-        'browse' => 'Explorar',
-        'structure' => 'Estructura',
-        'sql_console' => 'Consola SQL',
-        'import_data' => 'Importar Datos',
-        'export_data' => 'Exportar Datos',
-        'global_search' => 'Búsqueda Global',
-        'total_size' => 'Tamaño Total',
-        'data_size' => 'Tamaño de Datos',
-        'index_size' => 'Tamaño de Índices',
-        'engine' => 'Motor',
-        'collation' => 'Cotejamiento',
-        'actions' => 'Acciones'
-    ],
-    'zh' => [
-        'app_name' => 'Dabiro',
-        'app_tagline' => '专业的现代化数据库管理界面',
-        'database_type_label' => '数据库类型',
-        'host_label' => '主机 / 文件路径',
-        'port_label' => '端口',
-        'username_label' => '用户名',
-        'password_label' => '密码',
-        'database_name_label' => '数据库名称 (可选)',
-        'ssl_label' => '启用 SSL / TLS 加密 (远程连接)',
-        'connect_button' => '连接数据库',
-        'connect_uri_label' => '或粘贴连接字符串 (例如 postgres://... 或 mysql://...)',
-        'saved_connections' => '已存连接配置',
-        'logout' => '退出登录',
-        'databases' => '数据库',
-        'tables' => '数据表',
-        'browse' => '浏览数据',
-        'structure' => '表结构',
-        'sql_console' => 'SQL 控制台',
-        'import_data' => '导入数据',
-        'export_data' => '导出数据',
-        'global_search' => '全局搜索',
-        'total_size' => '总容量大小',
-        'data_size' => '数据大小',
-        'index_size' => '索引大小',
-        'overhead' => '空间碎片',
-        'engine' => '存储引擎',
-        'collation' => '字符集校对',
-        'actions' => '操作'
-    ],
-    'ar' => [
-        'app_name' => 'Dabiro',
-        'app_tagline' => 'واجهة احترافية متقدمة لإدارة قواعد البيانات',
-        'database_type_label' => 'نوع قاعدة البيانات',
-        'host_label' => 'المضيف / مسار الملف',
-        'port_label' => 'المنفذ',
-        'username_label' => 'اسم المستخدم',
-        'password_label' => 'كلمة المرور',
-        'database_name_label' => 'اسم القاعدة (اختياري)',
-        'ssl_label' => 'تشفير SSL / TLS (اتصال عن بعد)',
-        'connect_button' => 'الاتصال بقاعدة البيانات',
-        'connect_uri_label' => 'أو الصق رابط الاتصال المباشر',
-        'saved_connections' => 'الاتصالات المحفوظة',
-        'logout' => 'تسجيل الخروج',
-        'databases' => 'قواعد البيانات',
-        'tables' => 'الجداول',
-        'browse' => 'تصفح',
-        'structure' => 'الهيكل',
-        'sql_console' => 'وحدة SQL',
-        'total_size' => 'الحجم الإجمالي',
-        'data_size' => 'حجم البيانات',
-        'index_size' => 'حجم الفهارس',
-        'engine' => 'المحرك',
-        'collation' => 'الترميز',
-        'actions' => 'الإجراءات'
     ]
 ];
 
@@ -262,6 +194,45 @@ function __($key, $default = null)
     if (isset($TRANSLATIONS[$current_lang][$key])) return $TRANSLATIONS[$current_lang][$key];
     if (isset($TRANSLATIONS['en'][$key])) return $TRANSLATIONS['en'][$key];
     return $default !== null ? $default : $key;
+}
+
+// ─── SSH Tunnel Helper ────────────────────────────────────────────────────────
+function open_ssh_tunnel($ssh_host, $ssh_port, $ssh_user, $ssh_pass, $ssh_key, $remote_db_host, $remote_db_port)
+{
+    $ssh_port = $ssh_port ?: 22;
+    $remote_db_port = $remote_db_port ?: 3306;
+    
+    $local_port = mt_rand(20000, 45000);
+    for ($i = 0; $i < 5; $i++) {
+        $fp = @fsockopen('127.0.0.1', $local_port, $errno, $errstr, 0.2);
+        if (!$fp) break;
+        fclose($fp);
+        $local_port = mt_rand(20000, 45000);
+    }
+
+    $key_file = '';
+    if (!empty($ssh_key)) {
+        $key_file = tempnam(sys_get_temp_dir(), 'dabiro_key_');
+        file_put_contents($key_file, $ssh_key);
+        chmod($key_file, 0600);
+    }
+
+    $key_arg = $key_file ? "-i " . escapeshellarg($key_file) : "";
+    $pass_prefix = "";
+    if (empty($key_file) && !empty($ssh_pass) && `which sshpass 2>/dev/null`) {
+        $pass_prefix = "sshpass -p " . escapeshellarg($ssh_pass) . " ";
+    }
+
+    $cmd = "{$pass_prefix}ssh -f -N -L {$local_port}:" . escapeshellarg($remote_db_host) . ":{$remote_db_port} " . escapeshellarg("{$ssh_user}@{$ssh_host}") . " -p {$ssh_port} {$key_arg} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ExitOnForwardFailure=yes 2>&1";
+
+    exec($cmd, $out, $ret);
+    if ($ret === 0) {
+        usleep(300000);
+        return ['success' => true, 'local_port' => $local_port, 'key_file' => $key_file];
+    }
+
+    if ($key_file && file_exists($key_file)) @unlink($key_file);
+    return ['success' => false, 'error' => implode("\n", $out) ?: 'Failed to establish SSH tunnel'];
 }
 
 // ─── Database Connection Class ────────────────────────────────────────────────
@@ -420,9 +391,26 @@ class DbConnection
         }
         if ($this->type === 'mysql') {
             try {
-                $stmt = $this->prepare("SELECT table_name AS Name, engine AS Engine, table_rows AS Rows, data_length AS Data_length, index_length AS Index_length, (data_length + index_length) AS Total_length, data_free AS Data_free, auto_increment AS Auto_increment, table_collation AS Collation, table_comment AS Comment FROM information_schema.TABLES WHERE table_schema = ? ORDER BY table_name");
-                $stmt->execute([$database]);
-                return $stmt->fetchAll();
+                $rows = $this->query("SHOW TABLE STATUS" . ($database ? (" FROM " . $this->quoteIdentifier($database)) : ''))->fetchAll();
+                $res = [];
+                foreach ($rows as $r) {
+                    $map = array_change_key_case($r, CASE_LOWER);
+                    $data_len = (float)($map['data_length'] ?? 0);
+                    $idx_len  = (float)($map['index_length'] ?? 0);
+                    $res[] = [
+                        'Name' => $map['name'] ?? '',
+                        'Engine' => $map['engine'] ?? 'InnoDB',
+                        'Rows' => (int)($map['rows'] ?? 0),
+                        'Data_length' => $data_len,
+                        'Index_length' => $idx_len,
+                        'Total_length' => $data_len + $idx_len,
+                        'Data_free' => (float)($map['data_free'] ?? 0),
+                        'Auto_increment' => $map['auto_increment'] ?? null,
+                        'Collation' => $map['collation'] ?? '',
+                        'Comment' => $map['comment'] ?? ''
+                    ];
+                }
+                if (!empty($res)) return $res;
             } catch (Exception $e) {}
         } elseif ($this->type === 'pgsql') {
             try {
@@ -448,13 +436,81 @@ class DbConnection
         if (!$this->pdo) return [];
         switch ($this->type) {
             case 'mysql':
-                return $this->query("SHOW COLUMNS FROM " . $this->quoteIdentifier($table))->fetchAll();
+                return $this->query("SHOW FULL COLUMNS FROM " . $this->quoteIdentifier($table))->fetchAll();
             case 'pgsql':
                 $stmt = $this->pdo->prepare("SELECT column_name as \"Field\", data_type as \"Type\", is_nullable as \"Null\", column_default as \"Default\" FROM information_schema.columns WHERE table_name = ? AND (table_schema = current_schema() OR table_schema = 'public') ORDER BY ordinal_position");
                 $stmt->execute([$table]);
                 return $stmt->fetchAll();
             case 'sqlite':
                 return $this->query("PRAGMA table_info(" . $this->quoteIdentifier($table) . ")")->fetchAll();
+        }
+        return [];
+    }
+
+    public function getIndexes($table)
+    {
+        if (!$this->pdo) return [];
+        if ($this->type === 'mysql') {
+            try {
+                $rows = $this->query("SHOW INDEXES FROM " . $this->quoteIdentifier($table))->fetchAll();
+                $indexes = [];
+                foreach ($rows as $r) {
+                    $key = $r['Key_name'];
+                    if (!isset($indexes[$key])) {
+                        $indexes[$key] = [
+                            'name' => $key,
+                            'unique' => $r['Non_unique'] == 0,
+                            'type' => $r['Index_type'] ?? 'BTREE',
+                            'columns' => []
+                        ];
+                    }
+                    $indexes[$key]['columns'][] = $r['Column_name'];
+                }
+                return array_values($indexes);
+            } catch (Exception $e) {}
+        } elseif ($this->type === 'sqlite') {
+            try {
+                $rows = $this->query("PRAGMA index_list(" . $this->quoteIdentifier($table) . ")")->fetchAll();
+                $indexes = [];
+                foreach ($rows as $r) {
+                    $info = $this->query("PRAGMA index_info(" . $this->quoteIdentifier($r['name']) . ")")->fetchAll();
+                    $cols = array_column($info, 'name');
+                    $indexes[] = [
+                        'name' => $r['name'],
+                        'unique' => (bool)$r['unique'],
+                        'type' => 'INDEX',
+                        'columns' => $cols
+                    ];
+                }
+                return $indexes;
+            } catch (Exception $e) {}
+        }
+        return [];
+    }
+
+    public function getForeignKeys($table, $database = null)
+    {
+        if (!$this->pdo) return [];
+        if ($this->type === 'mysql') {
+            try {
+                $stmt = $this->prepare("SELECT CONSTRAINT_NAME, COLUMN_NAME, REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL");
+                $stmt->execute([$database, $table]);
+                return $stmt->fetchAll();
+            } catch (Exception $e) {}
+        } elseif ($this->type === 'sqlite') {
+            try {
+                $rows = $this->query("PRAGMA foreign_key_list(" . $this->quoteIdentifier($table) . ")")->fetchAll();
+                $fks = [];
+                foreach ($rows as $r) {
+                    $fks[] = [
+                        'CONSTRAINT_NAME' => 'fk_' . $r['id'],
+                        'COLUMN_NAME' => $r['from'],
+                        'REFERENCED_TABLE_NAME' => $r['table'],
+                        'REFERENCED_COLUMN_NAME' => $r['to']
+                    ];
+                }
+                return $fks;
+            } catch (Exception $e) {}
         }
         return [];
     }
@@ -478,20 +534,44 @@ function is_logged_in()
     return isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true;
 }
 
-function login($type, $host, $user, $pass, $dbname = '', $port = '', $ssl = false)
+function login($type, $host, $user, $pass, $dbname = '', $port = '', $ssl = false, $ssh_config = null)
 {
+    $actual_host = $host;
+    $actual_port = $port;
+
+    if (!empty($ssh_config['enabled'])) {
+        $tun = open_ssh_tunnel(
+            $ssh_config['host'],
+            $ssh_config['port'],
+            $ssh_config['user'],
+            $ssh_config['pass'] ?? '',
+            $ssh_config['key'] ?? '',
+            $host,
+            $port
+        );
+        if (!$tun['success']) {
+            return "SSH Tunnel Failed: " . $tun['error'];
+        }
+        $actual_host = '127.0.0.1';
+        $actual_port = $tun['local_port'];
+        $_SESSION['ssh_tunnel'] = $tun;
+    }
+
     $db = new DbConnection();
-    $res = $db->connect($type, $host, $user, $pass, $dbname, $port, $ssl);
+    $res = $db->connect($type, $actual_host, $user, $pass, $dbname, $actual_port, $ssl);
     if ($res === true) {
         session_regenerate_id(true);
         $_SESSION['logged_in'] = true;
         $_SESSION['db_type'] = $type;
         $_SESSION['db_host'] = $host;
         $_SESSION['db_port'] = $port;
+        $_SESSION['db_actual_host'] = $actual_host;
+        $_SESSION['db_actual_port'] = $actual_port;
         $_SESSION['db_ssl']  = $ssl;
         $_SESSION['db_user'] = $user;
         $_SESSION['db_pass'] = $pass;
         $_SESSION['db_name'] = $dbname;
+        $_SESSION['ssh_config'] = $ssh_config;
         $_SESSION['last_activity'] = time();
         return true;
     }
@@ -500,6 +580,9 @@ function login($type, $host, $user, $pass, $dbname = '', $port = '', $ssl = fals
 
 function logout()
 {
+    if (!empty($_SESSION['ssh_tunnel']['key_file']) && file_exists($_SESSION['ssh_tunnel']['key_file'])) {
+        @unlink($_SESSION['ssh_tunnel']['key_file']);
+    }
     $_SESSION = [];
     if (ini_get("session.use_cookies")) {
         $params = session_get_cookie_params();
@@ -517,13 +600,15 @@ function get_connection()
     }
     $_SESSION['last_activity'] = time();
     $db = new DbConnection();
+    $h = $_SESSION['db_actual_host'] ?? ($_SESSION['db_host'] ?? 'localhost');
+    $p = $_SESSION['db_actual_port'] ?? ($_SESSION['db_port'] ?? '');
     $res = $db->connect(
         $_SESSION['db_type'] ?? 'mysql',
-        $_SESSION['db_host'] ?? 'localhost',
+        $h,
         $_SESSION['db_user'] ?? '',
         $_SESSION['db_pass'] ?? '',
         $_SESSION['db_name'] ?? '',
-        $_SESSION['db_port'] ?? '',
+        $p,
         $_SESSION['db_ssl'] ?? false
     );
     if ($res !== true) {
@@ -553,7 +638,20 @@ if (isset($_POST['login'])) {
         $dbname = get_post('db_name');
         $ssl = (bool)get_post('db_ssl');
 
-        $res = login($type, $host, $user, $pass, $dbname, $port, $ssl);
+        $ssh_config = null;
+        if (get_post('use_ssh') === '1') {
+            $ssh_config = [
+                'enabled' => true,
+                'host' => trim(get_post('ssh_host')),
+                'port' => (int)get_post('ssh_port', 22),
+                'user' => trim(get_post('ssh_user')),
+                'auth_type' => get_post('ssh_auth_type', 'pass'),
+                'pass' => get_post('ssh_pass'),
+                'key'  => get_post('ssh_key')
+            ];
+        }
+
+        $res = login($type, $host, $user, $pass, $dbname, $port, $ssl, $ssh_config);
         if ($res === true) {
             redirect($dbname ? ('?page=tables&db=' . urlencode($dbname)) : '?page=databases');
         } else {
@@ -606,34 +704,124 @@ if (isset($_POST['create_table']) && validate_csrf_token(get_post('csrf_token'))
     }
 }
 
-// Bulk Actions (Drop / Truncate)
-if (isset($_POST['bulk_action']) && validate_csrf_token(get_post('csrf_token'))) {
+// Add Column
+if (isset($_POST['add_column']) && validate_csrf_token(get_post('csrf_token'))) {
     $db = get_connection();
-    $action = get_post('bulk_action');
-    $items = (array)get_post('selected', []);
-    $cur_db = get_post('database', get_get('db', ''));
-    if ($db && !empty($items)) {
+    $tbl = get_post('table');
+    $cur_db = get_get('db', '');
+    $col_name = trim(get_post('col_name'));
+    $col_type = get_post('col_type');
+    $col_len  = trim(get_post('col_len'));
+    $col_null = get_post('col_null') === '1' ? 'NULL' : 'NOT NULL';
+    $col_dflt = trim(get_post('col_dflt'));
+    $col_pos  = get_post('col_pos');
+
+    if ($db && $tbl && $col_name) {
+        if ($cur_db && $db->getType() !== 'sqlite') $db->getPdo()->exec("USE " . $db->quoteIdentifier($cur_db));
+        $type_def = $col_type . ($col_len ? "($col_len)" : "");
+        $dflt_def = $col_dflt !== '' ? (" DEFAULT " . $db->getPdo()->quote($col_dflt)) : "";
+        $pos_def  = $col_pos ? " $col_pos" : "";
+        $sql = "ALTER TABLE " . $db->quoteIdentifier($tbl) . " ADD COLUMN " . $db->quoteIdentifier($col_name) . " $type_def $col_null$dflt_def$pos_def";
         try {
-            if ($cur_db && $db->getType() !== 'sqlite') {
-                $db->getPdo()->exec("USE " . $db->quoteIdentifier($cur_db));
-            }
-            foreach ($items as $item) {
-                if ($action === 'drop') {
-                    $db->query("DROP TABLE " . $db->quoteIdentifier($item));
-                } elseif ($action === 'truncate') {
-                    if ($db->getType() === 'sqlite') {
-                        $db->query("DELETE FROM " . $db->quoteIdentifier($item));
-                    } else {
-                        $db->query("TRUNCATE TABLE " . $db->quoteIdentifier($item));
-                    }
-                }
-            }
-            $success_message = count($items) . " table(s) processed successfully.";
+            $db->query($sql);
+            $success_message = "Column `$col_name` added successfully.";
         } catch (Exception $e) { $error_message = $e->getMessage(); }
     }
 }
 
-// Table Operations (Rename, Copy, Truncate, Drop, Move)
+// Modify Column
+if (isset($_POST['edit_column']) && validate_csrf_token(get_post('csrf_token'))) {
+    $db = get_connection();
+    $tbl = get_post('table');
+    $cur_db = get_get('db', '');
+    $old_col = trim(get_post('old_col_name'));
+    $col_name = trim(get_post('col_name'));
+    $col_type = get_post('col_type');
+    $col_len  = trim(get_post('col_len'));
+    $col_null = get_post('col_null') === '1' ? 'NULL' : 'NOT NULL';
+    $col_dflt = trim(get_post('col_dflt'));
+
+    if ($db && $tbl && $col_name && $old_col) {
+        if ($cur_db && $db->getType() !== 'sqlite') $db->getPdo()->exec("USE " . $db->quoteIdentifier($cur_db));
+        $type_def = $col_type . ($col_len ? "($col_len)" : "");
+        $dflt_def = $col_dflt !== '' ? (" DEFAULT " . $db->getPdo()->quote($col_dflt)) : "";
+        if ($db->getType() === 'mysql') {
+            $sql = "ALTER TABLE " . $db->quoteIdentifier($tbl) . " CHANGE COLUMN " . $db->quoteIdentifier($old_col) . " " . $db->quoteIdentifier($col_name) . " $type_def $col_null$dflt_def";
+        } else {
+            $sql = "ALTER TABLE " . $db->quoteIdentifier($tbl) . " RENAME COLUMN " . $db->quoteIdentifier($old_col) . " TO " . $db->quoteIdentifier($col_name);
+        }
+        try {
+            $db->query($sql);
+            $success_message = "Column altered successfully.";
+        } catch (Exception $e) { $error_message = $e->getMessage(); }
+    }
+}
+
+// Drop Column
+if (get_get('action') === 'drop_column' && get_get('table') && get_get('col') && validate_csrf_token(get_get('csrf_token'))) {
+    $db = get_connection();
+    $tbl = get_get('table');
+    $col = get_get('col');
+    $cur_db = get_get('db', '');
+    if ($db && $tbl && $col) {
+        if ($cur_db && $db->getType() !== 'sqlite') $db->getPdo()->exec("USE " . $db->quoteIdentifier($cur_db));
+        try {
+            $db->query("ALTER TABLE " . $db->quoteIdentifier($tbl) . " DROP COLUMN " . $db->quoteIdentifier($col));
+            $success_message = "Column `$col` dropped.";
+        } catch (Exception $e) { $error_message = $e->getMessage(); }
+    }
+}
+
+// Add Index
+if (isset($_POST['add_index']) && validate_csrf_token(get_post('csrf_token'))) {
+    $db = get_connection();
+    $tbl = get_post('table');
+    $cur_db = get_get('db', '');
+    $idx_name = trim(get_post('index_name'));
+    $idx_type = get_post('index_type');
+    $idx_cols = (array)get_post('index_columns', []);
+
+    if ($db && $tbl && !empty($idx_cols)) {
+        if ($cur_db && $db->getType() !== 'sqlite') $db->getPdo()->exec("USE " . $db->quoteIdentifier($cur_db));
+        $quoted_cols = array_map([$db, 'quoteIdentifier'], $idx_cols);
+        $cols_sql = implode(', ', $quoted_cols);
+        if ($idx_type === 'PRIMARY KEY') {
+            $sql = "ALTER TABLE " . $db->quoteIdentifier($tbl) . " ADD PRIMARY KEY ($cols_sql)";
+        } elseif ($idx_type === 'UNIQUE') {
+            $sql = "CREATE UNIQUE INDEX " . $db->quoteIdentifier($idx_name ?: "idx_uniq_$tbl") . " ON " . $db->quoteIdentifier($tbl) . " ($cols_sql)";
+        } else {
+            $sql = "CREATE INDEX " . $db->quoteIdentifier($idx_name ?: "idx_$tbl") . " ON " . $db->quoteIdentifier($tbl) . " ($cols_sql)";
+        }
+        try {
+            $db->query($sql);
+            $success_message = "Index created successfully.";
+        } catch (Exception $e) { $error_message = $e->getMessage(); }
+    }
+}
+
+// Drop Index
+if (get_get('action') === 'drop_index' && get_get('table') && get_get('index') && validate_csrf_token(get_get('csrf_token'))) {
+    $db = get_connection();
+    $tbl = get_get('table');
+    $idx = get_get('index');
+    $cur_db = get_get('db', '');
+    if ($db && $tbl && $idx) {
+        if ($cur_db && $db->getType() !== 'sqlite') $db->getPdo()->exec("USE " . $db->quoteIdentifier($cur_db));
+        if ($idx === 'PRIMARY') {
+            $sql = "ALTER TABLE " . $db->quoteIdentifier($tbl) . " DROP PRIMARY KEY";
+        } elseif ($db->getType() === 'mysql') {
+            $sql = "ALTER TABLE " . $db->quoteIdentifier($tbl) . " DROP INDEX " . $db->quoteIdentifier($idx);
+        } else {
+            $sql = "DROP INDEX " . $db->quoteIdentifier($idx);
+        }
+        try {
+            $db->query($sql);
+            $success_message = "Index `$idx` dropped.";
+        } catch (Exception $e) { $error_message = $e->getMessage(); }
+    }
+}
+
+// Table Operations
 if (isset($_POST['operation_action']) && validate_csrf_token(get_post('csrf_token'))) {
     $db = get_connection();
     $op = get_post('operation_action');
@@ -668,6 +856,18 @@ if (isset($_POST['operation_action']) && validate_csrf_token(get_post('csrf_toke
                     }
                     $success_message = "Table copied to `$target_name`.";
                 }
+            } elseif ($op === 'alter_options') {
+                $eng = get_post('table_engine');
+                $collat = get_post('table_collation');
+                $ai = get_post('table_auto_increment');
+                if ($eng && $db->getType() === 'mysql') $db->query("ALTER TABLE " . $db->quoteIdentifier($tbl) . " ENGINE = $eng");
+                if ($collat && $db->getType() === 'mysql') $db->query("ALTER TABLE " . $db->quoteIdentifier($tbl) . " COLLATE = $collat");
+                if ($ai !== '' && is_numeric($ai) && $db->getType() === 'mysql') $db->query("ALTER TABLE " . $db->quoteIdentifier($tbl) . " AUTO_INCREMENT = " . (int)$ai);
+                $success_message = "Table options updated.";
+            } elseif ($op === 'optimize_table') {
+                if ($db->getType() === 'mysql') $db->query("OPTIMIZE TABLE " . $db->quoteIdentifier($tbl));
+                elseif ($db->getType() === 'sqlite') $db->query("VACUUM");
+                $success_message = "Table optimized.";
             } elseif ($op === 'truncate_table') {
                 if ($db->getType() === 'sqlite') $db->query("DELETE FROM " . $db->quoteIdentifier($tbl));
                 else $db->query("TRUNCATE TABLE " . $db->quoteIdentifier($tbl));
@@ -765,10 +965,10 @@ if (isset($_POST['execute_sql']) || isset($_POST['export_query'])) {
             try {
                 $stmt = $db->query($sql);
                 $sql_time = round((microtime(true) - $t_start) * 1000, 2);
-                if ($stmt->columnCount() > 0) {
+                if ($stmt && $stmt->columnCount() > 0) {
                     $sql_result = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 } else {
-                    $sql_affected = $stmt->rowCount();
+                    $sql_affected = $stmt ? $stmt->rowCount() : 0;
                     $sql_result = [];
                 }
             } catch (Exception $e) {
@@ -778,7 +978,7 @@ if (isset($_POST['execute_sql']) || isset($_POST['export_query'])) {
     }
 }
 
-// Export DB / Table Streaming
+// Export DB Streaming
 if (isset($_POST['export_database']) && validate_csrf_token(get_post('csrf_token'))) {
     $db = get_connection();
     $exp_db = get_post('export_db_name');
@@ -846,46 +1046,46 @@ if ($db && $selected_db) {
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%232563eb'><path d='M12 3C6.48 3 2 4.79 2 7v10c0 2.21 4.48 4 10 4s10-1.79 10-4V7c0-2.21-4.48-4-10-4zm0 2c4.97 0 8 1.5 8 2s-3.03 2-8 2-8-1.5-8-2 3.03-2 8-2zm0 6c-4.97 0-8-1.5-8-2v3.13c1.78 1.13 4.73 1.87 8 1.87s6.22-.74 8-1.87V9c0 .5-3.03 2-8 2zm0 6c-4.97 0-8-1.5-8-2v3.13c1.78 1.13 4.73 1.87 8 1.87s6.22-.74 8-1.87V15c0 .5-3.03 2-8 2z'/></svg>">
     <style>
         :root, [data-theme="light"] {
-            --primary: #2563eb; --primary-hover: #1d4ed8; --primary-light: #dbeafe;
+            --primary: #2563eb; --primary-hover: #1d4ed8; --primary-light: #eff6ff; --primary-border: #bfdbfe;
             --success: #10b981; --danger: #ef4444; --warning: #f59e0b;
             --bg-body: #f8fafc; --bg-card: #ffffff; --bg-sidebar: #ffffff; --bg-header: #ffffff;
             --text-main: #0f172a; --text-muted: #64748b; --border: #e2e8f0; --table-hover: #f1f5f9;
             --scrollbar-thumb: #cbd5e1;
-            --radius-sm: 6px; --radius: 8px; --radius-lg: 12px;
+            --radius-sm: 6px; --radius: 8px; --radius-lg: 14px;
         }
         [data-theme="dark"] {
-            --primary: #3b82f6; --primary-hover: #60a5fa; --primary-light: #1e3a8a;
+            --primary: #3b82f6; --primary-hover: #60a5fa; --primary-light: #172554; --primary-border: #1e3a8a;
             --success: #10b981; --danger: #f87171; --warning: #fbbf24;
-            --bg-body: #090d16; --bg-card: #131b2e; --bg-sidebar: #0f172a; --bg-header: #0f172a;
+            --bg-body: #0b0f19; --bg-card: #131b2e; --bg-sidebar: #0f172a; --bg-header: #0f172a;
             --text-main: #f8fafc; --text-muted: #94a3b8; --border: #1e293b; --table-hover: #1e293b;
             --scrollbar-thumb: #334155;
         }
         [data-theme="slate"] {
-            --primary: #64748b; --primary-hover: #475569; --primary-light: #334155;
+            --primary: #64748b; --primary-hover: #475569; --primary-light: #1e293b; --primary-border: #334155;
             --bg-body: #0b0f19; --bg-card: #151c2c; --bg-sidebar: #0f172a; --bg-header: #0f172a;
             --text-main: #f1f5f9; --text-muted: #94a3b8; --border: #1e293b; --table-hover: #1e293b;
             --scrollbar-thumb: #334155;
         }
         [data-theme="blue"] {
-            --primary: #0284c7; --primary-hover: #0369a1; --primary-light: #e0f2fe;
+            --primary: #0284c7; --primary-hover: #0369a1; --primary-light: #e0f2fe; --primary-border: #bae6fd;
             --bg-body: #f0f9ff; --bg-card: #ffffff; --bg-sidebar: #ffffff; --bg-header: #ffffff;
             --text-main: #0c4a6e; --text-muted: #38bdf8; --border: #bae6fd; --table-hover: #e0f2fe;
             --scrollbar-thumb: #7dd3fc;
         }
         [data-theme="green"] {
-            --primary: #059669; --primary-hover: #047857; --primary-light: #d1fae5;
+            --primary: #059669; --primary-hover: #047857; --primary-light: #d1fae5; --primary-border: #a7f3d0;
             --bg-body: #f0fdf4; --bg-card: #ffffff; --bg-sidebar: #ffffff; --bg-header: #ffffff;
             --text-main: #064e3b; --text-muted: #34d399; --border: #a7f3d0; --table-hover: #d1fae5;
             --scrollbar-thumb: #6ee7b7;
         }
         [data-theme="purple"] {
-            --primary: #7c3aed; --primary-hover: #6d28d9; --primary-light: #ede9fe;
+            --primary: #7c3aed; --primary-hover: #6d28d9; --primary-light: #ede9fe; --primary-border: #ddd6fe;
             --bg-body: #faf5ff; --bg-card: #ffffff; --bg-sidebar: #ffffff; --bg-header: #ffffff;
             --text-main: #4c1d95; --text-muted: #a78bfa; --border: #ddd6fe; --table-hover: #ede9fe;
             --scrollbar-thumb: #c4b5fd;
         }
         [data-theme="sunset"] {
-            --primary: #ea580c; --primary-hover: #c2410c; --primary-light: #ffedd5;
+            --primary: #ea580c; --primary-hover: #c2410c; --primary-light: #ffedd5; --primary-border: #fed7aa;
             --bg-body: #fff7ed; --bg-card: #ffffff; --bg-sidebar: #ffffff; --bg-header: #ffffff;
             --text-main: #7c2d12; --text-muted: #fb923c; --border: #fed7aa; --table-hover: #ffedd5;
             --scrollbar-thumb: #fdba74;
@@ -895,7 +1095,6 @@ if ($db && $selected_db) {
         a { color: var(--primary); text-decoration: none; }
         a:hover { text-decoration: underline; }
 
-        /* Sleek scrollbar system across whole UI */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
@@ -929,7 +1128,7 @@ if ($db && $selected_db) {
         .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 20px; overflow: hidden; }
         .card-header { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
         .card-title { font-size: 15px; font-weight: 700; }
-        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 6px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; text-decoration: none; }
+        .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; cursor: pointer; border: 1px solid transparent; text-decoration: none; transition: all 0.15s ease; }
         .btn-primary { background: var(--primary); color: #ffffff; }
         .btn-primary:hover { background: var(--primary-hover); }
         .btn-secondary { background: var(--bg-card); color: var(--text-main); border-color: var(--border); }
@@ -937,8 +1136,39 @@ if ($db && $selected_db) {
         .btn-danger { background: var(--danger); color: #ffffff; }
         .btn-sm { padding: 3px 8px; font-size: 11px; }
         .form-group { margin-bottom: 14px; }
-        .form-group label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; }
-        .form-control, input, select, textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; background: var(--bg-card); color: var(--text-main); font-family: inherit; }
+        .form-group label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: var(--text-main); }
+        
+        /* Explicit Text/Select styling - Do NOT style checkboxes globally */
+        .form-control, 
+        input[type="text"], 
+        input[type="password"], 
+        input[type="number"], 
+        input[type="email"], 
+        input[type="search"], 
+        select, 
+        textarea { 
+            width: 100%; 
+            padding: 9px 12px; 
+            border: 1px solid var(--border); 
+            border-radius: var(--radius-sm); 
+            font-size: 13px; 
+            background: var(--bg-card); 
+            color: var(--text-main); 
+            font-family: inherit; 
+            transition: border-color 0.15s ease, box-shadow 0.15s ease; 
+        }
+        .form-control:focus, 
+        input[type="text"]:focus, 
+        input[type="password"]:focus, 
+        input[type="number"]:focus, 
+        select:focus, 
+        textarea:focus { 
+            outline: none; 
+            border-color: var(--primary); 
+            box-shadow: 0 0 0 2px var(--primary-light); 
+        }
+        input[type="checkbox"], input[type="radio"] { width: auto; height: auto; margin: 0; cursor: pointer; }
+        
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: var(--radius); }
         .data-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
         [dir="rtl"] .data-table { text-align: right; }
@@ -957,8 +1187,106 @@ if ($db && $selected_db) {
         .modal-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
         .modal-body { padding: 20px; }
         .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; background: var(--table-hover); }
-        .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--bg-body); }
-        .login-card { width: 100%; max-width: 480px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 30px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+
+        /* ─── Compact Zero-Scroll Login Card ─── */
+        .login-wrap { 
+            height: 100vh;
+            max-height: 100vh;
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            padding: 12px 16px; 
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 15%, var(--primary-light), var(--bg-body) 70%); 
+        }
+        .login-card { 
+            width: 100%; 
+            max-width: 440px; 
+            background: var(--bg-card); 
+            border: 1px solid var(--border); 
+            border-radius: var(--radius); 
+            padding: 18px 22px; 
+            box-shadow: 0 12px 30px -8px rgba(0,0,0,0.1), 0 0 0 1px var(--border); 
+        }
+        .login-header { text-align: center; margin-bottom: 10px; }
+        
+        .login-nav-tabs { 
+            display: grid; 
+            grid-template-columns: repeat(4, 1fr); 
+            background: var(--table-hover); 
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm); 
+            padding: 2px; 
+            gap: 2px; 
+            margin-bottom: 10px; 
+        }
+        .login-tab-btn { 
+            padding: 5px 2px; 
+            font-size: 11px; 
+            font-weight: 600; 
+            border: none; 
+            background: transparent; 
+            color: var(--text-muted); 
+            border-radius: 4px; 
+            cursor: pointer; 
+            text-align: center; 
+            transition: all 0.15s ease; 
+            white-space: nowrap; 
+        }
+        .login-tab-btn:hover { color: var(--text-main); }
+        .login-tab-btn.active { 
+            background: var(--bg-card); 
+            color: var(--primary); 
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06); 
+        }
+
+        .login-card .form-group { margin-bottom: 8px; }
+        .login-card .form-group label { margin-bottom: 2px; font-size: 11.5px; font-weight: 600; }
+        .login-card .form-control { padding: 5px 10px; font-size: 12.5px; height: 32px; }
+
+        /* Compact SSL Toggle */
+        .ssl-switch-box {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--table-hover);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0 10px;
+            height: 32px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .ssl-switch-box:hover { border-color: var(--primary); }
+        .switch-ui {
+            position: relative;
+            display: inline-block;
+            width: 32px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+        .switch-ui input { opacity: 0; width: 0; height: 0; position: absolute; }
+        .switch-slider {
+            position: absolute;
+            inset: 0;
+            background-color: #cbd5e1;
+            border-radius: 18px;
+            transition: 0.2s;
+        }
+        .switch-slider:before {
+            position: absolute;
+            content: "";
+            height: 12px;
+            width: 12px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+        .switch-ui input:checked + .switch-slider { background-color: var(--primary); }
+        .switch-ui input:checked + .switch-slider:before { transform: translateX(14px); }
+
         .mobile-toggle { display: none; background: transparent; border: none; font-size: 20px; cursor: pointer; color: var(--text-main); }
         @media (max-width: 768px) {
             .sidebar { transform: translateX(-100%); }
@@ -966,63 +1294,82 @@ if ($db && $selected_db) {
             .sidebar.open { transform: translateX(0); }
             .main-wrapper { margin-left: 0 !important; margin-right: 0 !important; }
             .mobile-toggle { display: block; }
+            .login-nav-tabs { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
 <body>
 
 <?php if (!is_logged_in() || !$db): ?>
-    <!-- ─── Login Screen with Remote DB & URI Support ─── -->
+    <!-- ─── Compact Zero-Scroll Login Interface ─── -->
     <div class="login-wrap">
         <div class="login-card">
-            <div style="text-align:center; margin-bottom:20px;">
-                <svg viewBox="0 0 24 24" style="width:48px; height:48px; fill:var(--primary); margin-bottom:8px;"><path d="M12 3C6.48 3 2 4.79 2 7v10c0 2.21 4.48 4 10 4s10-1.79 10-4V7c0-2.21-4.48-4-10-4zm0 2c4.97 0 8 1.5 8 2s-3.03 2-8 2-8-1.5-8-2 3.03-2 8-2zm0 6c-4.97 0-8-1.5-8-2v3.13c1.78 1.13 4.73 1.87 8 1.87s6.22-.74 8-1.87V9c0 .5-3.03 2-8 2zm0 6c-4.97 0-8-1.5-8-2v3.13c1.78 1.13 4.73 1.87 8 1.87s6.22-.74 8-1.87V15c0 .5-3.03 2-8 2z"/></svg>
-                <h1 style="font-size:22px; font-weight:800;"><?php echo h(__('app_name')); ?></h1>
-                <p style="color:var(--text-muted); font-size:13px;"><?php echo h(__('app_tagline')); ?></p>
+            <div class="login-header">
+                <div style="display:inline-flex; align-items:center; gap:8px;">
+                    <svg viewBox="0 0 24 24" style="width:22px; height:22px; fill:var(--primary);"><path d="M12 3C6.48 3 2 4.79 2 7v10c0 2.21 4.48 4 10 4s10-1.79 10-4V7c0-2.21-4.48-4-10-4zm0 2c4.97 0 8 1.5 8 2s-3.03 2-8 2-8-1.5-8-2 3.03-2 8-2zm0 6c-4.97 0-8-1.5-8-2v3.13c1.78 1.13 4.73 1.87 8 1.87s6.22-.74 8-1.87V9c0 .5-3.03 2-8 2zm0 6c-4.97 0-8-1.5-8-2v3.13c1.78 1.13 4.73 1.87 8 1.87s6.22-.74 8-1.87V15c0 .5-3.03 2-8 2z"/></svg>
+                    <h1 style="font-size:18px; font-weight:800; color:var(--text-main); margin:0; letter-spacing:-0.4px;"><?php echo h(__('app_name')); ?></h1>
+                    <span class="badge badge-type" style="font-size:9.5px; padding:1px 5px;">v<?php echo DB_ADMIN_VERSION; ?></span>
+                </div>
             </div>
 
             <?php if ($error_message): ?>
-                <div class="alert alert-error"><?php echo h($error_message); ?></div>
+                <div class="alert alert-error" style="padding:7px 10px; margin-bottom:8px; font-size:11.5px;">✕ <?php echo h($error_message); ?></div>
             <?php endif; ?>
 
-            <!-- Quick Connection String Parser -->
-            <div class="form-group" style="background:var(--table-hover); padding:10px; border-radius:var(--radius-sm);">
-                <label style="font-size:12px; color:var(--text-muted);"><?php echo h(__('connect_uri_label')); ?></label>
-                <input type="text" id="connUriInput" class="form-control" placeholder="postgres://user:pass@host:5432/db or mysql://..." oninput="parseConnectionUri(this.value)">
+            <!-- Segmented Navigation Tabs -->
+            <div class="login-nav-tabs">
+                <button type="button" class="login-tab-btn active" id="tabBtnDirect" onclick="switchLoginTab('direct')">⚡ <?php echo h(__('direct_tab')); ?></button>
+                <button type="button" class="login-tab-btn" id="tabBtnSsh" onclick="switchLoginTab('ssh')">🔒 <?php echo h(__('ssh_tab')); ?></button>
+                <button type="button" class="login-tab-btn" id="tabBtnUri" onclick="switchLoginTab('uri')">🔗 <?php echo h(__('uri_tab')); ?></button>
+                <button type="button" class="login-tab-btn" id="tabBtnProfiles" onclick="switchLoginTab('profiles')">💾 <?php echo h(__('profiles_tab')); ?></button>
             </div>
 
-            <!-- Saved Connection Profiles -->
-            <div id="savedProfilesSection" style="display:none; margin-bottom:14px;">
-                <label style="font-size:12px; font-weight:700; margin-bottom:4px; display:block;"><?php echo h(__('saved_connections')); ?></label>
-                <select id="savedProfilesSelect" class="form-control" onchange="loadSavedProfile(this.value)">
-                    <option value="">-- Choose a saved profile --</option>
-                </select>
+            <!-- Panel: URI / Connection String -->
+            <div id="loginTabUri" style="display:none; margin-bottom:8px;">
+                <div class="form-group" style="background:var(--table-hover); padding:8px 10px; border-radius:var(--radius-sm); border:1px solid var(--border); margin-bottom:0;">
+                    <label style="font-size:11px; font-weight:700; color:var(--text-main); margin-bottom:3px;">Connection URL</label>
+                    <input type="text" id="connUriInput" class="form-control" placeholder="postgres://user:pass@host:5432/dbname?sslmode=require" oninput="parseConnectionUri(this.value)">
+                </div>
+            </div>
+
+            <!-- Panel: Saved Connection Profiles -->
+            <div id="loginTabProfiles" style="display:none; margin-bottom:8px;">
+                <div class="form-group" style="background:var(--table-hover); padding:8px 10px; border-radius:var(--radius-sm); border:1px solid var(--border); margin-bottom:0;">
+                    <label style="font-size:11px; font-weight:700; margin-bottom:3px;"><?php echo h(__('saved_connections')); ?></label>
+                    <select id="savedProfilesSelect" class="form-control" onchange="loadSavedProfile(this.value)">
+                        <option value="">-- Choose a saved profile --</option>
+                    </select>
+                </div>
             </div>
 
             <form method="post" id="loginForm" onsubmit="saveConnectionProfile();">
                 <input type="hidden" name="csrf_token" value="<?php echo h(get_csrf_token()); ?>">
+                <input type="hidden" name="use_ssh" id="useSshInput" value="0">
                 
+                <!-- Database Engine Select -->
                 <div class="form-group">
                     <label><?php echo h(__('database_type_label')); ?></label>
                     <select name="db_type" id="dbTypeInput" class="form-control" onchange="togglePortField(this.value)">
                         <option value="mysql">MySQL / MariaDB</option>
                         <option value="pgsql">PostgreSQL / Supabase / Neon</option>
-                        <option value="sqlite">SQLite 3</option>
+                        <option value="sqlite">SQLite 3 (File Path)</option>
                     </select>
                 </div>
 
-                <div style="display:flex; gap:10px;">
+                <!-- Database Host & Port -->
+                <div style="display:flex; gap:8px;">
                     <div class="form-group" style="flex:3;">
                         <label><?php echo h(__('host_label')); ?></label>
-                        <input type="text" name="db_host" id="dbHostInput" class="form-control" value="localhost" placeholder="localhost or db.example.com" required>
+                        <input type="text" name="db_host" id="dbHostInput" class="form-control" value="localhost" placeholder="localhost or remote-db.com" required>
                     </div>
-                    <div class="form-group" id="portFieldGroup" style="flex:1;">
+                    <div class="form-group" id="portFieldGroup" style="flex:1.2;">
                         <label><?php echo h(__('port_label')); ?></label>
                         <input type="number" name="db_port" id="dbPortInput" class="form-control" placeholder="3306">
                     </div>
                 </div>
 
-                <div style="display:flex; gap:10px;">
+                <!-- Database User & Password -->
+                <div style="display:flex; gap:8px;">
                     <div class="form-group" style="flex:1;">
                         <label><?php echo h(__('username_label')); ?></label>
                         <input type="text" name="db_user" id="dbUserInput" class="form-control" value="root">
@@ -1033,25 +1380,71 @@ if ($db && $selected_db) {
                     </div>
                 </div>
 
-                <div class="form-group">
-                    <label><?php echo h(__('database_name_label')); ?></label>
-                    <input type="text" name="db_name" id="dbNameInput" class="form-control" placeholder="Leave blank to explore all databases">
+                <!-- Database Name & SSL Toggle Row -->
+                <div style="display:flex; gap:8px; align-items:flex-end;">
+                    <div class="form-group" style="flex:2.2; margin-bottom:0;">
+                        <label><?php echo h(__('database_name_label')); ?></label>
+                        <input type="text" name="db_name" id="dbNameInput" class="form-control" placeholder="Optional">
+                    </div>
+                    <div class="form-group" style="flex:1.4; margin-bottom:0;">
+                        <label>&nbsp;</label>
+                        <div class="ssl-switch-box" onclick="toggleSslCheckbox()">
+                            <span style="font-weight:600; font-size:11.5px; color:var(--text-main);">🔒 SSL</span>
+                            <label class="switch-ui" onclick="event.stopPropagation();">
+                                <input type="checkbox" name="db_ssl" id="dbSslInput" value="1">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="form-group" style="margin-top:8px;">
-                    <label style="display:flex; align-items:center; gap:8px; font-weight:normal; cursor:pointer; font-size:12px;">
-                        <input type="checkbox" name="db_ssl" id="dbSslInput" value="1">
-                        <span>🔒 <?php echo h(__('ssl_label')); ?></span>
-                    </label>
+                <!-- SSH Tunnel Section (Expanded when SSH tab is active) -->
+                <div id="sshTunnelBox" style="display:none; margin:8px 0; padding:10px; background:var(--table-hover); border-radius:var(--radius-sm); border:1px solid var(--border);">
+                    <div style="font-weight:700; font-size:11.5px; margin-bottom:6px; display:flex; align-items:center; gap:4px;">
+                        <span>🔒</span> <span>SSH Tunnel / Bastion Host</span>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <div class="form-group" style="flex:3; margin-bottom:6px;">
+                            <label style="font-size:11px;"><?php echo h(__('ssh_host_label')); ?></label>
+                            <input type="text" name="ssh_host" id="sshHostInput" class="form-control" placeholder="bastion.example.com">
+                        </div>
+                        <div class="form-group" style="flex:1.2; margin-bottom:6px;">
+                            <label style="font-size:11px;"><?php echo h(__('ssh_port_label')); ?></label>
+                            <input type="number" name="ssh_port" id="sshPortInput" class="form-control" value="22">
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <div class="form-group" style="flex:1; margin-bottom:6px;">
+                            <label style="font-size:11px;"><?php echo h(__('ssh_user_label')); ?></label>
+                            <input type="text" name="ssh_user" id="sshUserInput" class="form-control" placeholder="ubuntu">
+                        </div>
+                        <div class="form-group" style="flex:1; margin-bottom:6px;">
+                            <label style="font-size:11px;"><?php echo h(__('ssh_auth_label')); ?></label>
+                            <select name="ssh_auth_type" id="sshAuthType" class="form-control" onchange="toggleSshAuthType(this.value)">
+                                <option value="pass">Password</option>
+                                <option value="key">Key (PEM)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group" id="sshPassGroup" style="margin-bottom:0;">
+                        <label style="font-size:11px;"><?php echo h(__('ssh_pass_label')); ?></label>
+                        <input type="password" name="ssh_pass" id="sshPassInput" class="form-control" placeholder="SSH Password">
+                    </div>
+                    <div class="form-group" id="sshKeyGroup" style="display:none; margin-bottom:0;">
+                        <label style="font-size:11px;"><?php echo h(__('ssh_key_label')); ?></label>
+                        <textarea name="ssh_key" id="sshKeyInput" rows="2" class="form-control" style="font-family:monospace; font-size:10.5px;" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea>
+                    </div>
                 </div>
 
-                <button type="submit" name="login" class="btn btn-primary" style="width:100%; padding:10px; margin-top:6px;"><?php echo h(__('connect_button')); ?></button>
+                <button type="submit" name="login" class="btn btn-primary" style="width:100%; padding:8px 12px; font-size:13px; margin-top:10px; height:34px;">
+                    <?php echo h(__('connect_button')); ?> &rarr;
+                </button>
             </form>
 
-            <div style="display:flex; justify-content:space-between; margin-top:20px; padding-top:14px; border-top:1px solid var(--border); font-size:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:10px; padding-top:8px; border-top:1px solid var(--border); font-size:11px;">
                 <div>
                     <span style="color:var(--text-muted);"><?php echo h(__('theme')); ?>:</span>
-                    <select onchange="location.href='?set_theme='+this.value" style="padding:2px 6px; font-size:12px; width:auto; display:inline-block;">
+                    <select onchange="location.href='?set_theme='+this.value" class="form-control" style="padding:1px 4px; font-size:11px; width:auto; display:inline-block; height:22px;">
                         <?php foreach ($THEMES as $t_k => $t_v): ?>
                             <option value="<?php echo $t_k; ?>" <?php echo $current_theme === $t_k ? 'selected' : ''; ?>><?php echo $t_v; ?></option>
                         <?php endforeach; ?>
@@ -1059,7 +1452,7 @@ if ($db && $selected_db) {
                 </div>
                 <div>
                     <span style="color:var(--text-muted);"><?php echo h(__('language')); ?>:</span>
-                    <select onchange="location.href='?set_lang='+this.value" style="padding:2px 6px; font-size:12px; width:auto; display:inline-block;">
+                    <select onchange="location.href='?set_lang='+this.value" class="form-control" style="padding:1px 4px; font-size:11px; width:auto; display:inline-block; height:22px;">
                         <?php foreach ($SUPPORTED_LANGS as $l_k => $l_v): ?>
                             <option value="<?php echo $l_k; ?>" <?php echo $current_lang === $l_k ? 'selected' : ''; ?>><?php echo $l_v; ?></option>
                         <?php endforeach; ?>
@@ -1387,7 +1780,7 @@ if ($db && $selected_db) {
                     $sort_col = get_get('sort', '');
                     $sort_dir = strtoupper(get_get('dir', 'ASC')) === 'DESC' ? 'DESC' : 'ASC';
 
-                    // Parse Adminer-style search conditions: where[0][col], where[0][op], where[0][val]
+                    // Parse Adminer-style search conditions
                     $where_params = (array)get_get('where', []);
                     $where_clauses = [];
                     foreach ($where_params as $w) {
@@ -1417,7 +1810,6 @@ if ($db && $selected_db) {
                         }
                     }
 
-                    // Fallback to simple search
                     $simple_q = trim(get_get('search', ''));
                     $simple_f = get_get('search_field', '');
                     if ($simple_q !== '' && $simple_f !== '' && empty($where_clauses)) {
@@ -1577,22 +1969,27 @@ if ($db && $selected_db) {
                     </div>
 
                 <?php elseif ($page === 'structure'): ?>
-                    <!-- ─── Structure View ─── -->
+                    <!-- ─── Structure View (Columns, Indexes, Alterations) ─── -->
                     <?php
                     $cols = $db->getColumns($selected_table);
+                    $indexes = $db->getIndexes($selected_table);
+                    $fks = $db->getForeignKeys($selected_table, $selected_db);
                     ?>
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
                         <div>
                             <h2 style="font-size:20px; font-weight:800;"><?php echo h(__('structure')); ?>: <?php echo h($selected_table); ?></h2>
-                            <p style="color:var(--text-muted); font-size:13px;"><?php echo count($cols); ?> <?php echo h(__('columns')); ?></p>
+                            <p style="color:var(--text-muted); font-size:13px;"><?php echo count($cols); ?> <?php echo h(__('columns')); ?> &bull; <?php echo count($indexes); ?> <?php echo h(__('indexes')); ?></p>
                         </div>
                         <div style="display:flex; gap:8px;">
+                            <button class="btn btn-primary" onclick="document.getElementById('modalAddColumn').classList.add('active')">+ <?php echo h(__('add_column')); ?></button>
+                            <button class="btn btn-secondary" onclick="document.getElementById('modalAddIndex').classList.add('active')">+ <?php echo h(__('add_index')); ?></button>
                             <a href="?page=browse&db=<?php echo urlencode($selected_db); ?>&table=<?php echo urlencode($selected_table); ?>" class="btn btn-secondary"><?php echo h(__('browse')); ?></a>
-                            <a href="?page=insert&db=<?php echo urlencode($selected_db); ?>&table=<?php echo urlencode($selected_table); ?>" class="btn btn-primary">+ <?php echo h(__('insert_record')); ?></a>
                         </div>
                     </div>
 
+                    <!-- Columns Schema -->
                     <div class="card">
+                        <div class="card-header"><h3 class="card-title"><?php echo h(__('columns')); ?></h3></div>
                         <div class="table-responsive">
                             <table class="data-table">
                                 <thead>
@@ -1603,21 +2000,172 @@ if ($db && $selected_db) {
                                         <th><?php echo h(__('null')); ?></th>
                                         <th><?php echo h(__('default')); ?></th>
                                         <th><?php echo h(__('extra')); ?></th>
+                                        <th style="text-align:right;"><?php echo h(__('actions')); ?></th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     <?php foreach ($cols as $idx => $col): ?>
+                                        <?php $fn = $col['Field'] ?? $col['name'] ?? $col['column_name']; ?>
                                         <tr>
                                             <td><?php echo $idx + 1; ?></td>
-                                            <td><strong><?php echo h($col['Field'] ?? $col['name'] ?? $col['column_name']); ?></strong></td>
+                                            <td><strong><?php echo h($fn); ?></strong></td>
                                             <td><span class="badge badge-type"><?php echo h($col['Type'] ?? $col['type'] ?? $col['data_type']); ?></span></td>
                                             <td><?php echo h($col['Null'] ?? $col['notnull'] ?? 'YES'); ?></td>
                                             <td><?php echo h($col['Default'] ?? $col['dflt_value'] ?? 'NULL'); ?></td>
                                             <td><?php echo h($col['Extra'] ?? ($col['pk'] ? 'PRIMARY KEY' : '')); ?></td>
+                                            <td style="text-align:right; white-space:nowrap;">
+                                                <button type="button" class="btn btn-secondary btn-sm" onclick="openEditColumnModal('<?php echo h($fn); ?>', '<?php echo h($col['Type'] ?? $col['type'] ?? 'VARCHAR(255)'); ?>', '<?php echo h($col['Null'] ?? 'YES'); ?>', '<?php echo h($col['Default'] ?? ''); ?>')">✏ Alter</button>
+                                                <a href="?action=drop_column&csrf_token=<?php echo urlencode(get_csrf_token()); ?>&db=<?php echo urlencode($selected_db); ?>&table=<?php echo urlencode($selected_table); ?>&col=<?php echo urlencode($fn); ?>" class="btn btn-danger btn-sm" onclick="return confirm('Drop column <?php echo h($fn); ?>?');">🗑 Drop</a>
+                                            </td>
                                         </tr>
                                     <?php endforeach; ?>
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+
+                    <!-- Indexes Schema -->
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title"><?php echo h(__('indexes')); ?></h3></div>
+                        <div class="table-responsive">
+                            <table class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>Key Name</th>
+                                        <th>Type</th>
+                                        <th>Unique</th>
+                                        <th>Columns</th>
+                                        <th style="text-align:right;"><?php echo h(__('actions')); ?></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($indexes)): ?>
+                                        <tr><td colspan="5" style="text-align:center; padding:18px; color:var(--text-muted);">No separate indexes found.</td></tr>
+                                    <?php endif; ?>
+                                    <?php foreach ($indexes as $ix): ?>
+                                        <tr>
+                                            <td><strong><?php echo h($ix['name']); ?></strong></td>
+                                            <td><span class="badge badge-type"><?php echo h($ix['type']); ?></span></td>
+                                            <td><?php echo $ix['unique'] ? '<span class="badge" style="background:#d1fae5;color:#065f46;">UNIQUE</span>' : 'No'; ?></td>
+                                            <td><?php echo h(implode(', ', $ix['columns'])); ?></td>
+                                            <td style="text-align:right;">
+                                                <a href="?action=drop_index&csrf_token=<?php echo urlencode(get_csrf_token()); ?>&db=<?php echo urlencode($selected_db); ?>&table=<?php echo urlencode($selected_table); ?>&index=<?php echo urlencode($ix['name']); ?>" class="btn btn-danger btn-sm" onclick="return confirm('Drop index <?php echo h($ix['name']); ?>?');">🗑 Drop</a>
+                                            </td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Add Column Modal -->
+                    <div class="modal-overlay" id="modalAddColumn">
+                        <div class="modal-box">
+                            <form method="post">
+                                <input type="hidden" name="csrf_token" value="<?php echo h(get_csrf_token()); ?>">
+                                <input type="hidden" name="table" value="<?php echo h($selected_table); ?>">
+                                <input type="hidden" name="add_column" value="1">
+                                <div class="modal-header">
+                                    <h3 class="card-title"><?php echo h(__('add_column')); ?></h3>
+                                    <button type="button" onclick="document.getElementById('modalAddColumn').classList.remove('active')" style="background:none;border:none;font-size:18px;cursor:pointer;">✕</button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="form-group"><label>Column Name</label><input type="text" name="col_name" class="form-control" required placeholder="new_field"></div>
+                                    <div style="display:flex; gap:10px;">
+                                        <div class="form-group" style="flex:2;">
+                                            <label>Type</label>
+                                            <select name="col_type" class="form-control">
+                                                <option>VARCHAR</option><option>INT</option><option>TEXT</option><option>DATETIME</option><option>DATE</option><option>DECIMAL</option><option>BIGINT</option><option>TINYINT</option><option>BOOLEAN</option><option>JSON</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" style="flex:1;">
+                                            <label>Length / Set</label>
+                                            <input type="text" name="col_len" class="form-control" placeholder="255">
+                                        </div>
+                                    </div>
+                                    <div class="form-group"><label>Default Value</label><input type="text" name="col_dflt" class="form-control" placeholder="Default string or number"></div>
+                                    <div class="form-group"><label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" name="col_null" value="1" checked> Allow NULL</label></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalAddColumn').classList.remove('active')"><?php echo h(__('cancel')); ?></button>
+                                    <button type="submit" name="add_column" class="btn btn-primary"><?php echo h(__('add_column')); ?></button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Edit Column Modal -->
+                    <div class="modal-overlay" id="modalEditColumn">
+                        <div class="modal-box">
+                            <form method="post">
+                                <input type="hidden" name="csrf_token" value="<?php echo h(get_csrf_token()); ?>">
+                                <input type="hidden" name="table" value="<?php echo h($selected_table); ?>">
+                                <input type="hidden" name="edit_column" value="1">
+                                <input type="hidden" name="old_col_name" id="editOldColName">
+                                <div class="modal-header">
+                                    <h3 class="card-title"><?php echo h(__('edit_column')); ?></h3>
+                                    <button type="button" onclick="document.getElementById('modalEditColumn').classList.remove('active')" style="background:none;border:none;font-size:18px;cursor:pointer;">✕</button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="form-group"><label>Column Name</label><input type="text" name="col_name" id="editColName" class="form-control" required></div>
+                                    <div style="display:flex; gap:10px;">
+                                        <div class="form-group" style="flex:2;">
+                                            <label>Type</label>
+                                            <select name="col_type" id="editColType" class="form-control">
+                                                <option>VARCHAR</option><option>INT</option><option>TEXT</option><option>DATETIME</option><option>DATE</option><option>DECIMAL</option><option>BIGINT</option><option>TINYINT</option><option>BOOLEAN</option><option>JSON</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" style="flex:1;">
+                                            <label>Length / Set</label>
+                                            <input type="text" name="col_len" id="editColLen" class="form-control" placeholder="255">
+                                        </div>
+                                    </div>
+                                    <div class="form-group"><label>Default Value</label><input type="text" name="col_dflt" id="editColDflt" class="form-control"></div>
+                                    <div class="form-group"><label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" name="col_null" id="editColNull" value="1"> Allow NULL</label></div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalEditColumn').classList.remove('active')"><?php echo h(__('cancel')); ?></button>
+                                    <button type="submit" class="btn btn-primary">Save Alterations</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Add Index Modal -->
+                    <div class="modal-overlay" id="modalAddIndex">
+                        <div class="modal-box">
+                            <form method="post">
+                                <input type="hidden" name="csrf_token" value="<?php echo h(get_csrf_token()); ?>">
+                                <input type="hidden" name="table" value="<?php echo h($selected_table); ?>">
+                                <input type="hidden" name="add_index" value="1">
+                                <div class="modal-header">
+                                    <h3 class="card-title"><?php echo h(__('add_index')); ?></h3>
+                                    <button type="button" onclick="document.getElementById('modalAddIndex').classList.remove('active')" style="background:none;border:none;font-size:18px;cursor:pointer;">✕</button>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="form-group"><label>Index Name</label><input type="text" name="index_name" class="form-control" placeholder="idx_column"></div>
+                                    <div class="form-group">
+                                        <label>Index Type</label>
+                                        <select name="index_type" class="form-control">
+                                            <option value="INDEX">INDEX (Standard)</option>
+                                            <option value="UNIQUE">UNIQUE</option>
+                                            <option value="PRIMARY KEY">PRIMARY KEY</option>
+                                            <option value="FULLTEXT">FULLTEXT</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Choose Columns</label>
+                                        <?php foreach ($cols as $c): ?>
+                                            <?php $cfn = $c['Field'] ?? $c['name'] ?? ''; ?>
+                                            <label style="display:block; margin-bottom:4px; font-weight:normal;"><input type="checkbox" name="index_columns[]" value="<?php echo h($cfn); ?>"> <?php echo h($cfn); ?></label>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" onclick="document.getElementById('modalAddIndex').classList.remove('active')"><?php echo h(__('cancel')); ?></button>
+                                    <button type="submit" name="add_index" class="btn btn-primary"><?php echo h(__('add_index')); ?></button>
+                                </div>
+                            </form>
                         </div>
                     </div>
 
@@ -1661,6 +2209,50 @@ if ($db && $selected_db) {
                             </div>
                             <button type="submit" class="btn btn-primary"><?php echo h(__('copy_table')); ?></button>
                         </form>
+                    </div>
+
+                    <!-- Table Storage Engine & Auto Increment -->
+                    <?php if ($db && $db->getType() === 'mysql'): ?>
+                        <div class="card">
+                            <div class="card-header"><h3 class="card-title">Table Engine & Collation Options</h3></div>
+                            <form method="post" style="padding:18px;">
+                                <input type="hidden" name="csrf_token" value="<?php echo h(get_csrf_token()); ?>">
+                                <input type="hidden" name="table" value="<?php echo h($selected_table); ?>">
+                                <input type="hidden" name="operation_action" value="alter_options">
+                                <div style="display:flex; gap:10px;">
+                                    <div class="form-group" style="flex:1;">
+                                        <label>Storage Engine</label>
+                                        <select name="table_engine" class="form-control">
+                                            <option value="InnoDB">InnoDB</option>
+                                            <option value="MyISAM">MyISAM</option>
+                                            <option value="MEMORY">MEMORY</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group" style="flex:1;">
+                                        <label>Collation</label>
+                                        <input type="text" name="table_collation" class="form-control" placeholder="utf8mb4_unicode_ci">
+                                    </div>
+                                    <div class="form-group" style="flex:1;">
+                                        <label>Auto Increment Value</label>
+                                        <input type="number" name="table_auto_increment" class="form-control" placeholder="1000">
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Save Table Options</button>
+                            </form>
+                        </div>
+                    <?php endif; ?>
+
+                    <!-- Optimize & Maintenance -->
+                    <div class="card">
+                        <div class="card-header"><h3 class="card-title">Maintenance</h3></div>
+                        <div style="padding:18px;">
+                            <form method="post" style="display:inline-block;">
+                                <input type="hidden" name="csrf_token" value="<?php echo h(get_csrf_token()); ?>">
+                                <input type="hidden" name="table" value="<?php echo h($selected_table); ?>">
+                                <input type="hidden" name="operation_action" value="optimize_table">
+                                <button type="submit" class="btn btn-secondary">⚡ Optimize & Defragment Table</button>
+                            </form>
+                        </div>
                     </div>
 
                     <!-- Dangerous Actions: Truncate / Drop -->
@@ -1932,6 +2524,41 @@ if ($db && $selected_db) {
 <?php endif; ?>
 
 <script>
+// ─── Login Tabs Switcher ──────────────────────────────────────────────────────
+function switchLoginTab(tab) {
+    document.querySelectorAll('.login-tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('loginTabUri').style.display = 'none';
+    document.getElementById('loginTabProfiles').style.display = 'none';
+    document.getElementById('sshTunnelBox').style.display = 'none';
+    document.getElementById('useSshInput').value = '0';
+
+    if (tab === 'direct') {
+        document.getElementById('tabBtnDirect').classList.add('active');
+    } else if (tab === 'ssh') {
+        document.getElementById('tabBtnSsh').classList.add('active');
+        document.getElementById('sshTunnelBox').style.display = 'block';
+        document.getElementById('useSshInput').value = '1';
+    } else if (tab === 'uri') {
+        document.getElementById('tabBtnUri').classList.add('active');
+        document.getElementById('loginTabUri').style.display = 'block';
+        document.getElementById('connUriInput').focus();
+    } else if (tab === 'profiles') {
+        document.getElementById('tabBtnProfiles').classList.add('active');
+        document.getElementById('loginTabProfiles').style.display = 'block';
+        renderSavedProfiles();
+    }
+}
+
+function toggleSshAuthType(type) {
+    document.getElementById('sshPassGroup').style.display = type === 'pass' ? 'block' : 'none';
+    document.getElementById('sshKeyGroup').style.display = type === 'key' ? 'block' : 'none';
+}
+
+function toggleSslCheckbox() {
+    const cb = document.getElementById('dbSslInput');
+    if (cb) cb.checked = !cb.checked;
+}
+
 // ─── Connection URI Parser & Profile Manager ──────────────────────────────────
 function parseConnectionUri(uri) {
     if (!uri) return;
@@ -1980,24 +2607,26 @@ function saveConnectionProfile() {
     const name = document.getElementById('dbNameInput')?.value;
     const ssl  = document.getElementById('dbSslInput')?.checked;
 
-    const profileName = `${type}://${user ? user + '@' : ''}${host}${port ? ':' + port : ''}${name ? '/' + name : ''}`;
+    const use_ssh = document.getElementById('useSshInput')?.value === '1';
+    const ssh_host = document.getElementById('sshHostInput')?.value.trim();
+    const ssh_port = document.getElementById('sshPortInput')?.value;
+    const ssh_user = document.getElementById('sshUserInput')?.value.trim();
+
+    const profileName = `${type}://${user ? user + '@' : ''}${host}${port ? ':' + port : ''}${name ? '/' + name : ''}` + (use_ssh ? ` (via ${ssh_user}@${ssh_host})` : '');
     try {
         let profiles = JSON.parse(localStorage.getItem('dabiro_profiles') || '{}');
-        profiles[profileName] = { type, host, port, user, name, ssl };
+        profiles[profileName] = { type, host, port, user, name, ssl, use_ssh, ssh_host, ssh_port, ssh_user };
         localStorage.setItem('dabiro_profiles', JSON.stringify(profiles));
     } catch (_) {}
 }
 
 function renderSavedProfiles() {
-    const sec = document.getElementById('savedProfilesSection');
     const sel = document.getElementById('savedProfilesSelect');
-    if (!sec || !sel) return;
+    if (!sel) return;
     try {
         const profiles = JSON.parse(localStorage.getItem('dabiro_profiles') || '{}');
         const keys = Object.keys(profiles);
-        if (keys.length === 0) { sec.style.display = 'none'; return; }
-        sec.style.display = 'block';
-        sel.innerHTML = '<option value="">-- Choose a saved profile --</option>';
+        sel.innerHTML = '<option value="">-- Choose a saved profile (' + keys.length + ' saved) --</option>';
         keys.forEach(k => {
             const opt = document.createElement('option');
             opt.value = k;
@@ -2020,6 +2649,15 @@ function loadSavedProfile(k) {
         document.getElementById('dbUserInput').value = p.user || '';
         document.getElementById('dbNameInput').value = p.name || '';
         document.getElementById('dbSslInput').checked = !!p.ssl;
+
+        if (p.use_ssh) {
+            switchLoginTab('ssh');
+            document.getElementById('sshHostInput').value = p.ssh_host || '';
+            document.getElementById('sshPortInput').value = p.ssh_port || '22';
+            document.getElementById('sshUserInput').value = p.ssh_user || '';
+        } else {
+            switchLoginTab('direct');
+        }
     } catch (_) {}
 }
 
@@ -2037,6 +2675,21 @@ function filterSidebarTables(query) {
     if (badge) badge.textContent = count;
 }
 
+// ─── Modal Edit Column ────────────────────────────────────────────────────────
+function openEditColumnModal(name, type, isNull, dflt) {
+    document.getElementById('editOldColName').value = name;
+    document.getElementById('editColName').value = name;
+    document.getElementById('editColDflt').value = (dflt === 'NULL' ? '' : dflt);
+    document.getElementById('editColNull').checked = (isNull === 'YES' || isNull === '1');
+    
+    const m = type.match(/^([a-zA-Z]+)(\((.+)\))?/);
+    if (m) {
+        document.getElementById('editColType').value = m[1].toUpperCase();
+        document.getElementById('editColLen').value = m[3] || '';
+    }
+    document.getElementById('modalEditColumn').classList.add('active');
+}
+
 // ─── SQL Shortcuts & Filters ──────────────────────────────────────────────────
 let filterIdx = 100;
 function addFilterRow() {
@@ -2047,7 +2700,6 @@ function addFilterRow() {
     row.className = 'filter-row';
     row.style.cssText = 'display:flex; gap:8px; margin-bottom:8px; align-items:center;';
     
-    // Copy options from existing select
     const firstSelect = container.querySelector('select');
     const optionsHtml = firstSelect ? firstSelect.innerHTML : '<option value="id">id</option>';
 
