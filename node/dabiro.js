@@ -303,7 +303,24 @@ class DbConnection {
         if (database && this.type !== 'sqlite') await this.run(`USE ${this.quoteId(database)}`);
         if (this.type === 'mysql') {
             try {
-                return await this.run(`SELECT table_name AS Name, engine AS Engine, table_rows AS Rows, data_length AS Data_length, index_length AS Index_length, (data_length + index_length) AS Total_length, data_free AS Data_free, auto_increment AS Auto_increment, table_collation AS Collation FROM information_schema.TABLES WHERE table_schema = ? ORDER BY table_name`, [database]);
+                const rows = await this.run(`SHOW TABLE STATUS` + (database ? ` FROM ${this.quoteId(database)}` : ''));
+                if (Array.isArray(rows) && rows.length) {
+                    return rows.map(r => {
+                        const dLen = Number(r.Data_length ?? r.data_length ?? 0);
+                        const iLen = Number(r.Index_length ?? r.index_length ?? 0);
+                        return {
+                            Name: r.Name ?? r.name ?? '',
+                            Engine: r.Engine ?? r.engine ?? 'InnoDB',
+                            Rows: Number(r.Rows ?? r.rows ?? 0),
+                            Data_length: dLen,
+                            Index_length: iLen,
+                            Total_length: dLen + iLen,
+                            Data_free: Number(r.Data_free ?? r.data_free ?? 0),
+                            Auto_increment: r.Auto_increment ?? r.auto_increment ?? null,
+                            Collation: r.Collation ?? r.collation ?? ''
+                        };
+                    });
+                }
             } catch (_) {}
         } else if (this.type === 'pgsql') {
             try {
@@ -551,7 +568,35 @@ app.all('*', upload.single('sql_file'), async (req, res) => {
         .btn-sm { padding: 3px 8px; font-size: 11px; }
         .form-group { margin-bottom: 14px; }
         .form-group label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; }
-        .form-control, input, select, textarea { width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 13px; background: var(--bg-card); color: var(--text-main); }
+        .form-control, 
+        input[type="text"], 
+        input[type="password"], 
+        input[type="number"], 
+        input[type="email"], 
+        input[type="search"], 
+        select, 
+        textarea { 
+            width: 100%; 
+            padding: 9px 12px; 
+            border: 1px solid var(--border); 
+            border-radius: var(--radius-sm); 
+            font-size: 13px; 
+            background: var(--bg-card); 
+            color: var(--text-main); 
+            font-family: inherit; 
+            transition: border-color 0.15s ease, box-shadow 0.15s ease; 
+        }
+        .form-control:focus, 
+        input[type="text"]:focus, 
+        input[type="password"]:focus, 
+        input[type="number"]:focus, 
+        select:focus, 
+        textarea:focus { 
+            outline: none; 
+            border-color: var(--primary); 
+            box-shadow: 0 0 0 2px var(--primary-light); 
+        }
+        input[type="checkbox"], input[type="radio"] { width: auto; height: auto; margin: 0; cursor: pointer; }
         .table-responsive { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border: 1px solid var(--border); border-radius: var(--radius); }
         .data-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; }
         [dir="rtl"] .data-table { text-align: right; }
@@ -564,41 +609,172 @@ app.all('*', upload.single('sql_file'), async (req, res) => {
         .alert { padding: 12px 16px; border-radius: var(--radius-sm); margin-bottom: 18px; font-size: 13px; font-weight: 500; }
         .alert-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
         .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
-        .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: var(--bg-body); }
-        .login-card { width: 100%; max-width: 480px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 30px; }
+        
+        /* ─── Compact Zero-Scroll Login Card ─── */
+        .login-wrap { 
+            height: 100vh;
+            max-height: 100vh;
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            padding: 12px 16px; 
+            overflow: hidden;
+            background: radial-gradient(circle at 50% 15%, var(--primary-light), var(--bg-body) 70%); 
+        }
+        .login-card { 
+            width: 100%; 
+            max-width: 440px; 
+            background: var(--bg-card); 
+            border: 1px solid var(--border); 
+            border-radius: var(--radius); 
+            padding: 18px 22px; 
+            box-shadow: 0 12px 30px -8px rgba(0,0,0,0.1), 0 0 0 1px var(--border); 
+        }
+        .login-header { text-align: center; margin-bottom: 10px; }
+        
+        .login-nav-tabs { 
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr); 
+            background: var(--table-hover); 
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm); 
+            padding: 2px; 
+            gap: 2px; 
+            margin-bottom: 10px; 
+        }
+        .login-tab-btn { 
+            padding: 5px 2px; 
+            font-size: 11px; 
+            font-weight: 600; 
+            border: none; 
+            background: transparent; 
+            color: var(--text-muted); 
+            border-radius: 4px; 
+            cursor: pointer; 
+            text-align: center; 
+            transition: all 0.15s ease; 
+            white-space: nowrap; 
+        }
+        .login-tab-btn:hover { color: var(--text-main); }
+        .login-tab-btn.active { 
+            background: var(--bg-card); 
+            color: var(--primary); 
+            box-shadow: 0 1px 2px rgba(0,0,0,0.06); 
+        }
+
+        .login-card .form-group { margin-bottom: 8px; }
+        .login-card .form-group label { margin-bottom: 2px; font-size: 11.5px; font-weight: 600; }
+        .login-card .form-control { padding: 5px 10px; font-size: 12.5px; height: 32px; }
+
+        .ssl-switch-box {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--table-hover);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0 10px;
+            height: 32px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .ssl-switch-box:hover { border-color: var(--primary); }
+        .switch-ui {
+            position: relative;
+            display: inline-block;
+            width: 32px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+        .switch-ui input { opacity: 0; width: 0; height: 0; position: absolute; }
+        .switch-slider {
+            position: absolute;
+            inset: 0;
+            background-color: #cbd5e1;
+            border-radius: 18px;
+            transition: 0.2s;
+        }
+        .switch-slider:before {
+            position: absolute;
+            content: "";
+            height: 12px;
+            width: 12px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            border-radius: 50%;
+            transition: 0.2s;
+        }
+        .switch-ui input:checked + .switch-slider { background-color: var(--primary); }
+        .switch-ui input:checked + .switch-slider:before { transform: translateX(14px); }
     </style>
 </head>
 <body>
 ${!isLoggedIn(req) ? `
     <div class="login-wrap">
         <div class="login-card">
-            <div style="text-align:center; margin-bottom:20px;">
-                <svg viewBox="0 0 24 24" style="width:48px; height:48px; fill:var(--primary); margin-bottom:8px;"><path d="M12 3C6.48 3 2 4.79 2 7v10c0 2.21 4.48 4 10 4s10-1.79 10-4V7c0-2.21-4.48-4-10-4zm0 2c4.97 0 8 1.5 8 2s-3.03 2-8 2-8-1.5-8-2 3.03-2 8-2zm0 6c-4.97 0-8-1.5-8-2v3.13c1.78 1.13 4.73 1.87 8 1.87s6.22-.74 8-1.87V9c0 .5-3.03 2-8 2zm0 6c-4.97 0-8-1.5-8-2v3.13c1.78 1.13 4.73 1.87 8 1.87s6.22-.74 8-1.87V15c0 .5-3.03 2-8 2z"/></svg>
-                <h1 style="font-size:22px; font-weight:800;">${h(t(lang, 'app_name'))}</h1>
-                <p style="color:var(--text-muted); font-size:13px;">${h(t(lang, 'app_tagline'))}</p>
+            <div class="login-header">
+                <div style="display:inline-flex; align-items:center; gap:8px;">
+                    <svg viewBox="0 0 24 24" style="width:22px; height:22px; fill:var(--primary);"><path d="M12 3C6.48 3 2 4.79 2 7v10c0 2.21 4.48 4 10 4s10-1.79 10-4V7c0-2.21-4.48-4-10-4zm0 2c4.97 0 8 1.5 8 2s-3.03 2-8 2-8-1.5-8-2 3.03-2 8-2zm0 6c-4.97 0-8-1.5-8-2v3.13c1.78 1.13 4.73 1.87 8 1.87s6.22-.74 8-1.87V9c0 .5-3.03 2-8 2zm0 6c-4.97 0-8-1.5-8-2v3.13c1.78 1.13 4.73 1.87 8 1.87s6.22-.74 8-1.87V15c0 .5-3.03 2-8 2z"/></svg>
+                    <h1 style="font-size:18px; font-weight:800; color:var(--text-main); margin:0; letter-spacing:-0.4px;">${h(t(lang, 'app_name'))}</h1>
+                </div>
             </div>
-            ${error ? `<div class="alert alert-error">${h(error)}</div>` : ''}
+            ${error ? `<div class="alert alert-error" style="padding:7px 10px; margin-bottom:8px; font-size:11.5px;">✕ ${h(error)}</div>` : ''}
+
+            <div class="login-nav-tabs">
+                <button type="button" class="login-tab-btn active" id="tabBtnDirect" onclick="switchLoginTab('direct')">⚡ Direct</button>
+                <button type="button" class="login-tab-btn" id="tabBtnSsh" onclick="switchLoginTab('ssh')">🔒 SSH Tunnel</button>
+                <button type="button" class="login-tab-btn" id="tabBtnUri" onclick="switchLoginTab('uri')">🔗 URI String</button>
+            </div>
 
             <!-- Quick Connection String Parser -->
-            <div class="form-group" style="background:var(--table-hover); padding:10px; border-radius:var(--radius-sm);">
-                <label style="font-size:12px; color:var(--text-muted);">${h(t(lang, 'connect_uri_label'))}</label>
-                <input type="text" id="connUriInput" class="form-control" placeholder="postgres://user:pass@host:5432/db or mysql://..." oninput="parseConnectionUri(this.value)">
+            <div id="loginTabUri" style="display:none; margin-bottom:8px;">
+                <div class="form-group" style="background:var(--table-hover); padding:8px 10px; border-radius:var(--radius-sm); border:1px solid var(--border); margin-bottom:0;">
+                    <label style="font-size:11px; font-weight:700; color:var(--text-main); margin-bottom:3px;">${h(t(lang, 'connect_uri_label'))}</label>
+                    <input type="text" id="connUriInput" class="form-control" placeholder="postgres://user:pass@host:5432/dbname?sslmode=require" oninput="parseConnectionUri(this.value)">
+                </div>
             </div>
 
-            <form method="post">
+            <form method="post" id="loginForm">
                 <input type="hidden" name="csrf_token" value="${h(csrf)}">
+                <input type="hidden" name="use_ssh" id="useSshInput" value="0">
                 <div class="form-group"><label>${h(t(lang, 'database_type_label'))}</label><select name="db_type" id="dbTypeInput" class="form-control"><option value="mysql">MySQL / MariaDB</option><option value="pgsql">PostgreSQL / Supabase / Neon</option><option value="sqlite">SQLite 3</option></select></div>
-                <div style="display:flex; gap:10px;">
+                <div style="display:flex; gap:8px;">
                     <div class="form-group" style="flex:3;"><label>${h(t(lang, 'host_label'))}</label><input type="text" name="db_host" id="dbHostInput" class="form-control" value="localhost" required></div>
-                    <div class="form-group" style="flex:1;"><label>${h(t(lang, 'port_label'))}</label><input type="number" name="db_port" id="dbPortInput" class="form-control" placeholder="3306"></div>
+                    <div class="form-group" style="flex:1.2;"><label>${h(t(lang, 'port_label'))}</label><input type="number" name="db_port" id="dbPortInput" class="form-control" placeholder="3306"></div>
                 </div>
-                <div style="display:flex; gap:10px;">
+                <div style="display:flex; gap:8px;">
                     <div class="form-group" style="flex:1;"><label>${h(t(lang, 'username_label'))}</label><input type="text" name="db_user" id="dbUserInput" class="form-control" value="root"></div>
                     <div class="form-group" style="flex:1;"><label>${h(t(lang, 'password_label'))}</label><input type="password" name="db_pass" id="dbPassInput" class="form-control"></div>
                 </div>
-                <div class="form-group"><label>${h(t(lang, 'database_name_label'))}</label><input type="text" name="db_name" id="dbNameInput" class="form-control"></div>
-                <div class="form-group"><label style="display:flex; align-items:center; gap:8px; font-weight:normal; font-size:12px;"><input type="checkbox" name="db_ssl" value="1"> 🔒 ${h(t(lang, 'ssl_label'))}</label></div>
-                <button type="submit" name="login" value="1" class="btn btn-primary" style="width:100%; padding:10px;">${h(t(lang, 'connect_button'))}</button>
+                
+                <div style="display:flex; gap:8px; align-items:flex-end;">
+                    <div class="form-group" style="flex:2.2; margin-bottom:0;"><label>${h(t(lang, 'database_name_label'))}</label><input type="text" name="db_name" id="dbNameInput" class="form-control" placeholder="Optional"></div>
+                    <div class="form-group" style="flex:1.4; margin-bottom:0;">
+                        <label>&nbsp;</label>
+                        <div class="ssl-switch-box" onclick="const cb=document.getElementById('dbSslInput'); if(cb) cb.checked = !cb.checked;">
+                            <span style="font-weight:600; font-size:11.5px; color:var(--text-main);">🔒 SSL</span>
+                            <label class="switch-ui" onclick="event.stopPropagation();">
+                                <input type="checkbox" name="db_ssl" id="dbSslInput" value="1">
+                                <span class="switch-slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="sshTunnelBox" style="display:none; margin:8px 0; padding:10px; background:var(--table-hover); border-radius:var(--radius-sm); border:1px solid var(--border);">
+                    <div style="font-weight:700; font-size:11.5px; margin-bottom:6px;">🔒 SSH Bastion Host</div>
+                    <div style="display:flex; gap:6px;">
+                        <div class="form-group" style="flex:3; margin-bottom:6px;"><label style="font-size:11px;">SSH Host</label><input type="text" name="ssh_host" id="sshHostInput" class="form-control" placeholder="bastion.example.com"></div>
+                        <div class="form-group" style="flex:1.2; margin-bottom:6px;"><label style="font-size:11px;">SSH Port</label><input type="number" name="ssh_port" id="sshPortInput" class="form-control" value="22"></div>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <div class="form-group" style="flex:1; margin-bottom:6px;"><label style="font-size:11px;">SSH Username</label><input type="text" name="ssh_user" id="sshUserInput" class="form-control" placeholder="ubuntu"></div>
+                        <div class="form-group" style="flex:1; margin-bottom:6px;"><label style="font-size:11px;">SSH Password</label><input type="password" name="ssh_pass" id="sshPassInput" class="form-control"></div>
+                    </div>
+                </div>
+
+                <button type="submit" name="login" value="1" class="btn btn-primary" style="width:100%; padding:8px 12px; font-size:13px; margin-top:10px; height:34px;">${h(t(lang, 'connect_button'))} &rarr;</button>
             </form>
         </div>
     </div>
@@ -749,6 +925,27 @@ ${!isLoggedIn(req) ? `
     </div>
 `}
 <script>
+function switchLoginTab(tab) {
+    document.querySelectorAll('.login-tab-btn').forEach(b => b.classList.remove('active'));
+    const uriBox = document.getElementById('loginTabUri');
+    const sshBox = document.getElementById('sshTunnelBox');
+    const useSsh = document.getElementById('useSshInput');
+    if (uriBox) uriBox.style.display = 'none';
+    if (sshBox) sshBox.style.display = 'none';
+    if (useSsh) useSsh.value = '0';
+
+    if (tab === 'direct') {
+        document.getElementById('tabBtnDirect')?.classList.add('active');
+    } else if (tab === 'ssh') {
+        document.getElementById('tabBtnSsh')?.classList.add('active');
+        if (sshBox) sshBox.style.display = 'block';
+        if (useSsh) useSsh.value = '1';
+    } else if (tab === 'uri') {
+        document.getElementById('tabBtnUri')?.classList.add('active');
+        if (uriBox) { uriBox.style.display = 'block'; document.getElementById('connUriInput')?.focus(); }
+    }
+}
+
 function parseConnectionUri(uri) {
     if (!uri) return;
     try {
