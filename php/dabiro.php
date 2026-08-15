@@ -2524,26 +2524,43 @@ function login(array $cfg)
     $host = $cfg['host'];
     $port = $cfg['port'];
 
-    if (!empty($cfg['ssh']['enabled'])) {
-        $ssh = $cfg['ssh'];
-        // The DB host/port in the form are resolved *from the bastion*, which is
-        // why "localhost" here means the remote server's own loopback - exactly
-        // what `ssh -L <local>:localhost:<port> user@host` does.
-        $ssh['target_host'] = $cfg['host'] !== '' ? $cfg['host'] : '127.0.0.1';
-        $ssh['target_port'] = (int)($cfg['port'] ?: default_port($cfg['type']));
+    $hasPendingSsh = false;
+    if (!empty($_SESSION['pending_ssh'])) {
+        $st = SshTunnel::status($_SESSION['pending_ssh']);
+        if (!empty($st['up'])) {
+            $hasPendingSsh = true;
+        }
+    }
 
-        $t = SshTunnel::ensure($ssh);
-        if (empty($t['ok'])) return $t['error'];
+    if (!empty($cfg['ssh']['enabled']) || $hasPendingSsh) {
+        if ($hasPendingSsh) {
+            $ssh = $_SESSION['pending_ssh'];
+            $host = '127.0.0.1';
+            $port = $ssh['local_port'] ?? $ssh['port_bound'] ?? $ssh['port'];
+        } else {
+            $ssh = $cfg['ssh'];
+            // The DB host/port in the form are resolved *from the bastion*, which is
+            // why "localhost" here means the remote server's own loopback - exactly
+            // what `ssh -L <local>:localhost:<port> user@host` does.
+            $ssh['target_host'] = $cfg['host'] !== '' ? $cfg['host'] : '127.0.0.1';
+            $ssh['target_port'] = (int)($cfg['port'] ?: default_port($cfg['type']));
 
-        $host = '127.0.0.1';
-        $port = $t['port'];
+            $t = SshTunnel::ensure($ssh);
+            if (empty($t['ok'])) return $t['error'];
+
+            $host = '127.0.0.1';
+            $port = $t['port'];
+            $ssh['local_port'] = $t['port'];
+            $ssh['port'] = $t['port'];
+        }
     }
 
     $db = new DbConnection();
     $res = $db->connect($cfg['type'], $host, $cfg['user'], $cfg['pass'], $cfg['dbname'], $port, $cfg['ssl']);
     if ($res !== true) {
-        // Do not leave a tunnel running for a login that failed.
-        if ($ssh) SshTunnel::close($ssh);
+        // Do not leave a tunnel running for a direct 1-step SSH login that failed.
+        // For 2-step SSH flow with active pending_ssh, preserve the tunnel so the user can fix DB credentials.
+        if ($ssh && !$hasPendingSsh) SshTunnel::close($ssh);
         return $res;
     }
 
@@ -2556,6 +2573,7 @@ function login(array $cfg)
         'name' => $cfg['dbname'], 'ssl' => (bool)$cfg['ssl'],
     ];
     $_SESSION['ssh'] = $ssh ? ($ssh + ['enabled' => true]) : ['enabled' => false];
+    unset($_SESSION['pending_ssh']);
     $_SESSION['last_activity'] = time();
     $_SESSION['schema'] = $db->getSchema();
     return true;
@@ -2570,6 +2588,9 @@ function logout()
 {
     if ($ssh = session_ssh_config()) {
         SshTunnel::close($ssh);
+    }
+    if (!empty($_SESSION['pending_ssh'])) {
+        SshTunnel::close($_SESSION['pending_ssh']);
     }
     $_SESSION = [];
     if (ini_get('session.use_cookies')) {
@@ -2921,6 +2942,100 @@ if ($action === 'vault') {
     }
 
     json_out(['ok' => false, 'error' => 'Unknown vault operation.'], 400);
+}
+
+// ── SSH Tunnel pre-auth endpoints (for 2-step connection flow) ──
+if ($action === 'ssh_connect') {
+    if (!validate_csrf_token(get_post('csrf_token', get_get('csrf_token')))) {
+        json_out(['ok' => false, 'error' => 'Invalid security token.'], 403);
+    }
+    if (!SshTunnel::available($why)) {
+        json_out(['ok' => false, 'error' => $why], 400);
+    }
+
+    $sshHost = trim((string)get_post('ssh_host'));
+    $sshPort = (int)(get_post('ssh_port', 22) ?: 22);
+    $sshUser = trim((string)get_post('ssh_user'));
+    $sshAuth = (string)get_post('ssh_auth', 'agent');
+    $targetHost = trim((string)get_post('target_host', '127.0.0.1')) ?: '127.0.0.1';
+    $targetPort = (int)(get_post('target_port', 3306) ?: 3306);
+    $localPort  = (int)get_post('ssh_local_port', 0);
+
+    if ($sshHost === '') {
+        json_out(['ok' => false, 'error' => 'SSH host is required.'], 400);
+    }
+    if ($sshUser === '' && $sshAuth !== 'agent') {
+        json_out(['ok' => false, 'error' => 'SSH username is required.'], 400);
+    }
+
+    $sshCfg = [
+        'enabled'     => true,
+        'host'        => $sshHost,
+        'port'        => $sshPort,
+        'user'        => $sshUser,
+        'auth'        => $sshAuth,
+        'password'    => (string)get_post('ssh_pass'),
+        'key'         => (string)get_post('ssh_key'),
+        'key_pass'    => (string)get_post('ssh_key_pass'),
+        'key_is_path' => get_post('ssh_key_mode') === 'path',
+        'local_port'  => $localPort,
+        'target_host' => $targetHost,
+        'target_port' => $targetPort,
+    ];
+
+    if (!empty($_SESSION['pending_ssh'])) {
+        SshTunnel::close($_SESSION['pending_ssh']);
+        unset($_SESSION['pending_ssh']);
+    }
+
+    $res = SshTunnel::ensure($sshCfg);
+    if (empty($res['ok'])) {
+        json_out(['ok' => false, 'error' => $res['error'] ?? 'Could not establish SSH tunnel.'], 400);
+    }
+
+    $sshCfg['local_port'] = $res['port'];
+    $sshCfg['port_bound'] = $res['port'];
+    $sshCfg['pid'] = $res['pid'];
+    $_SESSION['pending_ssh'] = $sshCfg;
+
+    json_out([
+        'ok'          => true,
+        'port'        => $res['port'],
+        'host'        => $sshHost,
+        'user'        => $sshUser,
+        'target_host' => $targetHost,
+        'target_port' => $targetPort,
+        'reused'      => !empty($res['reused'])
+    ]);
+}
+
+if ($action === 'ssh_disconnect') {
+    if (!validate_csrf_token(get_post('csrf_token', get_get('csrf_token')))) {
+        json_out(['ok' => false, 'error' => 'Invalid security token.'], 403);
+    }
+    if (!empty($_SESSION['pending_ssh'])) {
+        SshTunnel::close($_SESSION['pending_ssh']);
+        unset($_SESSION['pending_ssh']);
+    }
+    json_out(['ok' => true]);
+}
+
+if ($action === 'ssh_status') {
+    if (!empty($_SESSION['pending_ssh'])) {
+        $st = SshTunnel::status($_SESSION['pending_ssh']);
+        if (!empty($st['up'])) {
+            json_out([
+                'ok'          => true,
+                'connected'   => true,
+                'port'        => $st['port'],
+                'host'        => $_SESSION['pending_ssh']['host'] ?? '',
+                'user'        => $_SESSION['pending_ssh']['user'] ?? '',
+                'target_host' => $_SESSION['pending_ssh']['target_host'] ?? '127.0.0.1',
+                'target_port' => $_SESSION['pending_ssh']['target_port'] ?? 3306,
+            ]);
+        }
+    }
+    json_out(['ok' => true, 'connected' => false]);
 }
 
 // A session that survived the redirect means there is no loop to warn about.
@@ -4570,6 +4685,97 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
 .subpanel { padding: 11px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 10px; }
 .subpanel > .t { font-size: 11.5px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 6px; color: var(--text); }
 
+.ssh-step-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 14px;
+}
+.step-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 11px;
+    border-radius: var(--r-full);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--text-faint);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    transition: all var(--t-fast) var(--ease);
+}
+.step-pill .step-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+    background: var(--border-strong);
+    color: var(--text);
+}
+.step-pill.active {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border-color: var(--accent-border);
+}
+.step-pill.active .step-num {
+    background: var(--accent);
+    color: var(--accent-contrast);
+}
+.step-pill.done {
+    background: var(--ok-soft);
+    color: var(--ok);
+    border-color: var(--ok-border);
+}
+.step-pill.done .step-num {
+    background: var(--ok);
+    color: #fff;
+}
+.step-sep {
+    color: var(--text-faint);
+    display: flex;
+    align-items: center;
+}
+.step-sep .ico { width: 12px; height: 12px; }
+
+.ssh-active-chip {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 11px;
+    border-radius: var(--r-sm);
+    background: var(--ok-soft);
+    border: 1px solid var(--ok-border);
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--ok);
+}
+.ssh-active-info {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    flex: 1;
+    color: var(--text);
+}
+.ssh-active-info .dot {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--ok); flex: none;
+}
+.ssh-active-chip .btn {
+    flex: none;
+    color: var(--danger);
+    padding: 3px 8px;
+}
+.ssh-active-chip .btn:hover {
+    background: var(--danger-soft);
+    color: var(--danger-hover);
+}
+
 /* ─── Utility ──────────────────────────────────────────────────────────────── */
 .skeleton {
     background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-3) 50%, var(--surface-2) 75%);
@@ -4638,6 +4844,18 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
 <?php
     $ssh_ok = SshTunnel::available($ssh_why);
     $vault_ok = Vault::available($vault_why);
+    $has_pending_ssh = false;
+    $pending_ssh_info = null;
+    if (!empty($_SESSION['pending_ssh'])) {
+        $st = SshTunnel::status($_SESSION['pending_ssh']);
+        if (!empty($st['up'])) {
+            $has_pending_ssh = true;
+            $pending_ssh_info = $_SESSION['pending_ssh'];
+            $pending_ssh_info['local_port'] = $st['port'];
+        } else {
+            unset($_SESSION['pending_ssh']);
+        }
+    }
 ?>
 <div class="login-wrap">
   <div class="login-card">
@@ -4667,8 +4885,8 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
     <?php endif; ?>
 
     <div class="tabs" style="margin-bottom:12px" role="tablist">
-      <button type="button" class="tab active hov" data-pane="direct" role="tab"><?php echo ico('plug-zap'); ?> Direct</button>
-      <button type="button" class="tab hov" data-pane="ssh" role="tab"><?php echo ico('shield-check'); ?> SSH Tunnel</button>
+      <button type="button" class="tab <?php echo (!$has_pending_ssh ? 'active ' : ''); ?>hov" data-pane="direct" role="tab"><?php echo ico('plug-zap'); ?> Direct</button>
+      <button type="button" class="tab <?php echo ($has_pending_ssh ? 'active ' : ''); ?>hov" data-pane="ssh" role="tab"><?php echo ico('shield-check'); ?> SSH Tunnel</button>
       <button type="button" class="tab hov" data-pane="saved" role="tab"><?php echo ico('bookmark'); ?> Saved</button>
     </div>
 
@@ -4689,8 +4907,8 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
       <?php endif; ?>
     </div>
 
-    <!-- Paste a connection URL -->
-    <div class="pane on" id="pane-uri-holder">
+    <!-- Paste a connection URL (Direct only) -->
+    <div class="pane <?php echo !$has_pending_ssh ? 'on' : ''; ?>" id="pane-uri-holder">
       <details class="subpanel" style="margin-bottom:10px">
         <summary style="cursor:pointer;font-size:11.5px;font-weight:700;display:flex;align-items:center;gap:6px">
           <?php echo ico('link'); ?> Paste a connection URL instead
@@ -4701,133 +4919,169 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
       </details>
     </div>
 
-    <form method="post" id="loginForm" autocomplete="off">
-      <input type="hidden" name="csrf_token" value="<?php echo h($csrf); ?>">
-      <input type="hidden" name="use_ssh" id="useSsh" value="0">
+    <!-- SSH Step Indicator -->
+    <div id="sshStepper" class="ssh-step-indicator" style="<?php echo $has_pending_ssh ? '' : 'display:none;'; ?>">
+      <div class="step-pill <?php echo $has_pending_ssh ? 'done' : 'active'; ?>" id="stepPill1">
+        <span class="step-num">1</span>
+        <span class="step-lbl">SSH Bastion</span>
+      </div>
+      <span class="step-sep"><?php echo ico('chevron-right'); ?></span>
+      <div class="step-pill <?php echo $has_pending_ssh ? 'active' : ''; ?>" id="stepPill2">
+        <span class="step-num">2</span>
+        <span class="step-lbl">Database Login</span>
+      </div>
+    </div>
 
-      <!-- Two columns once the SSH panel is showing, so the card still fits
-           on screen without the page scrolling. -->
-      <div class="login-grid">
-      <div class="pane col-ssh" id="pane-ssh">
-        <?php if (!$ssh_ok): ?>
-          <div class="alert alert-warn"><?php echo ico('triangle-alert'); ?><div><?php echo h($ssh_why); ?></div></div>
-        <?php endif; ?>
-        <div class="subpanel">
-          <div class="t"><?php echo ico('shield-check'); ?> SSH bastion</div>
-          <div class="row">
-            <div class="field" style="flex:3">
-              <label for="sshHost">SSH host</label>
-              <input type="text" name="ssh_host" id="sshHost" class="input-sm" placeholder="127.0.0.1">
-            </div>
-            <div class="field" style="flex:1;min-width:80px">
-              <label for="sshPort">Port</label>
-              <input type="number" name="ssh_port" id="sshPort" class="input-sm" value="22">
-            </div>
+    <!-- SSH Step 1 Form -->
+    <div id="sshStep1" style="display:none;">
+      <?php if (!$ssh_ok): ?>
+        <div class="alert alert-warn"><?php echo ico('triangle-alert'); ?><div><?php echo h($ssh_why); ?></div></div>
+      <?php endif; ?>
+      <div class="subpanel" style="margin-bottom:12px">
+        <div class="t"><?php echo ico('shield-check'); ?> SSH Bastion Details</div>
+        <div class="row">
+          <div class="field" style="flex:3">
+            <label for="sshHost">SSH host</label>
+            <input type="text" name="ssh_host" id="sshHost" class="input-sm" placeholder="bastion.example.com" value="<?php echo h($pending_ssh_info['host'] ?? ''); ?>">
           </div>
-          <div class="field">
-            <label for="sshUser">SSH username</label>
-            <input type="text" name="ssh_user" id="sshUser" class="input-sm" placeholder="ubuntu">
-          </div>
-          <div class="field">
-            <label for="sshAuth">Authentication</label>
-            <select name="ssh_auth" id="sshAuth" class="input-sm">
-              <option value="agent">Use this server's ~/.ssh config &amp; agent</option>
-              <option value="key">Private key</option>
-              <option value="password">Password</option>
-            </select>
-          </div>
-
-          <div id="sshKeyBox" class="hidden">
-            <div class="field">
-              <label for="sshKeyMode">Key source</label>
-              <select name="ssh_key_mode" id="sshKeyMode" class="input-sm">
-                <option value="paste">Paste the key</option>
-                <option value="path">Path to a key file on this server</option>
-              </select>
-            </div>
-            <div class="field">
-              <textarea name="ssh_key" id="sshKey" class="input-sm" rows="2"
-                        placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" spellcheck="false"></textarea>
-            </div>
-            <div class="field">
-              <label for="sshKeyPass">Key passphrase <span class="faint">(if the key has one)</span></label>
-              <input type="password" name="ssh_key_pass" id="sshKeyPass" class="input-sm" autocomplete="new-password">
-            </div>
-          </div>
-
-          <div id="sshPassBox" class="field hidden">
-            <label for="sshPass">SSH password</label>
-            <input type="password" name="ssh_pass" id="sshPass" class="input-sm" autocomplete="new-password">
-            <div class="hint">Handled through <code>SSH_ASKPASS</code>, so nothing extra needs installing and the password never appears in the process list.</div>
-          </div>
-
-          <div class="field" style="margin-bottom:0">
-            <label for="sshLocalPort">Local port <span class="faint">(optional)</span></label>
-            <input type="number" name="ssh_local_port" id="sshLocalPort" class="input-sm" placeholder="auto">
-            <div class="hint">Leave blank to pick a free port automatically.</div>
+          <div class="field" style="flex:1;min-width:80px">
+            <label for="sshPort">Port</label>
+            <input type="number" name="ssh_port" id="sshPort" class="input-sm" value="<?php echo h($pending_ssh_info['port'] ?? '22'); ?>">
           </div>
         </div>
+        <div class="field">
+          <label for="sshUser">SSH username</label>
+          <input type="text" name="ssh_user" id="sshUser" class="input-sm" placeholder="ubuntu" value="<?php echo h($pending_ssh_info['user'] ?? ''); ?>">
+        </div>
+        <div class="field">
+          <label for="sshAuth">Authentication</label>
+          <select name="ssh_auth" id="sshAuth" class="input-sm">
+            <option value="agent">Use this server's ~/.ssh config &amp; agent</option>
+            <option value="key">Private key</option>
+            <option value="password">Password</option>
+          </select>
+        </div>
+
+        <div id="sshKeyBox" class="hidden">
+          <div class="field">
+            <label for="sshKeyMode">Key source</label>
+            <select name="ssh_key_mode" id="sshKeyMode" class="input-sm">
+              <option value="paste">Paste the key</option>
+              <option value="path">Path to a key file on this server</option>
+            </select>
+          </div>
+          <div class="field">
+            <textarea name="ssh_key" id="sshKey" class="input-sm" rows="2"
+                      placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" spellcheck="false"></textarea>
+          </div>
+          <div class="field">
+            <label for="sshKeyPass">Key passphrase <span class="faint">(if the key has one)</span></label>
+            <input type="password" name="ssh_key_pass" id="sshKeyPass" class="input-sm" autocomplete="new-password">
+          </div>
+        </div>
+
+        <div id="sshPassBox" class="field hidden">
+          <label for="sshPass">SSH password</label>
+          <input type="password" name="ssh_pass" id="sshPass" class="input-sm" autocomplete="new-password">
+          <div class="hint">Handled through <code>SSH_ASKPASS</code>, so nothing extra needs installing and the password never appears in the process list.</div>
+        </div>
+
+        <div class="row">
+          <div class="field" style="flex:2">
+            <label for="targetHost">Remote DB host <span class="faint">(from bastion)</span></label>
+            <input type="text" id="targetHost" class="input-sm" placeholder="127.0.0.1" value="127.0.0.1">
+          </div>
+          <div class="field" style="flex:1;min-width:80px">
+            <label for="targetPort">DB Port</label>
+            <input type="number" id="targetPort" class="input-sm" placeholder="3306" value="3306">
+          </div>
+        </div>
+
+        <div class="field" style="margin-bottom:0">
+          <label for="sshLocalPort">Local port <span class="faint">(optional)</span></label>
+          <input type="number" name="ssh_local_port" id="sshLocalPort" class="input-sm" placeholder="auto">
+          <div class="hint">Leave blank to pick a free port automatically.</div>
+        </div>
+      </div>
+
+      <button type="button" id="sshConnectBtn" class="btn btn-primary btn-block hov" style="margin-top:6px;padding:9px">
+        <span class="btn-label">Connect SSH Tunnel</span>
+        <?php echo ico('arrow-right'); ?>
+      </button>
+    </div>
+
+    <!-- Login Form (Step 2 / Direct DB Form) -->
+    <form method="post" id="loginForm" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="<?php echo h($csrf); ?>">
+      <input type="hidden" name="use_ssh" id="useSsh" value="<?php echo $has_pending_ssh ? '1' : '0'; ?>">
+
+      <!-- Active SSH Chip (shown on Step 2) -->
+      <div id="sshActiveChip" class="ssh-active-chip" style="<?php echo $has_pending_ssh ? '' : 'display:none;'; ?>">
+        <div class="ssh-active-info">
+          <span class="dot"></span>
+          <div class="grow ellipsis">
+            <span style="font-weight:600">SSH Tunnel Active:</span>
+            <span id="sshActiveDetails" class="mono"><?php echo h($has_pending_ssh ? (($pending_ssh_info['user'] ? $pending_ssh_info['user'] . '@' : '') . $pending_ssh_info['host'] . ' (port ' . $pending_ssh_info['local_port'] . ')') : ''); ?></span>
+          </div>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm hov" id="sshDisconnectBtn" title="Disconnect SSH Tunnel">
+          <?php echo ico('unplug'); ?> Disconnect
+        </button>
       </div>
 
       <div class="col-db">
-      <div class="field">
-        <label for="dbType"><?php echo h(__('database_type_label')); ?></label>
-        <select name="db_type" id="dbType">
-          <option value="mysql">MySQL / MariaDB</option>
-          <option value="pgsql">PostgreSQL</option>
-          <option value="sqlite">SQLite</option>
-        </select>
-      </div>
-
-      <div class="row">
-        <div class="field" style="flex:3">
-          <label for="dbHost" id="hostLabel"><?php echo h(__('host_label')); ?></label>
-          <input type="text" name="db_host" id="dbHost" value="localhost" required>
-        </div>
-        <div class="field" style="flex:1;min-width:84px" id="portField">
-          <label for="dbPort"><?php echo h(__('port_label')); ?></label>
-          <input type="number" name="db_port" id="dbPort" placeholder="3306">
-        </div>
-      </div>
-
-      <div class="row" id="credRow">
         <div class="field">
-          <label for="dbUser"><?php echo h(__('username_label')); ?></label>
-          <input type="text" name="db_user" id="dbUser" value="root" autocomplete="username">
+          <label for="dbType"><?php echo h(__('database_type_label')); ?></label>
+          <select name="db_type" id="dbType">
+            <option value="mysql">MySQL / MariaDB</option>
+            <option value="pgsql">PostgreSQL</option>
+            <option value="sqlite">SQLite</option>
+          </select>
         </div>
-        <div class="field">
-          <label for="dbPass"><?php echo h(__('password_label')); ?></label>
-          <input type="password" name="db_pass" id="dbPass" autocomplete="current-password">
+
+        <div class="row" id="hostRow">
+          <div class="field" style="flex:3">
+            <label for="dbHost" id="hostLabel"><?php echo h(__('host_label')); ?></label>
+            <input type="text" name="db_host" id="dbHost" value="127.0.0.1" required>
+          </div>
+          <div class="field" style="flex:1;min-width:84px" id="portField">
+            <label for="dbPort"><?php echo h(__('port_label')); ?></label>
+            <input type="number" name="db_port" id="dbPort" placeholder="3306">
+          </div>
+        </div>
+
+        <div class="row" id="credRow">
+          <div class="field">
+            <label for="dbUser"><?php echo h(__('username_label')); ?></label>
+            <input type="text" name="db_user" id="dbUser" value="root" autocomplete="username">
+          </div>
+          <div class="field">
+            <label for="dbPass"><?php echo h(__('password_label')); ?></label>
+            <input type="password" name="db_pass" id="dbPass" autocomplete="current-password">
+          </div>
+        </div>
+
+        <div class="row" style="align-items:flex-end">
+          <div class="field" style="flex:2">
+            <label for="dbName"><?php echo h(__('database_name_label')); ?> <span class="faint">(optional)</span></label>
+            <input type="text" name="db_name" id="dbName" placeholder="Leave blank to browse all">
+          </div>
+          <div class="field" style="flex:1;min-width:120px">
+            <label class="toggle-box" for="dbSsl">
+              <span class="flex" style="gap:6px;font-size:12px;font-weight:600"><?php echo ico('lock'); ?> SSL</span>
+              <span class="switch"><input type="checkbox" name="db_ssl" id="dbSsl" value="1"><span class="track"></span></span>
+            </label>
+          </div>
         </div>
       </div>
 
-      <div class="row" style="align-items:flex-end">
-        <div class="field" style="flex:2">
-          <label for="dbName"><?php echo h(__('database_name_label')); ?> <span class="faint">(optional)</span></label>
-          <input type="text" name="db_name" id="dbName" placeholder="Leave blank to browse all">
-        </div>
-        <div class="field" style="flex:1;min-width:120px">
-          <label class="toggle-box" for="dbSsl">
-            <span class="flex" style="gap:6px;font-size:12px;font-weight:600"><?php echo ico('lock'); ?> SSL</span>
-            <span class="switch"><input type="checkbox" name="db_ssl" id="dbSsl" value="1"><span class="track"></span></span>
-          </label>
-        </div>
-      </div>
-
-      <div class="pane" id="ssh-note">
-        <div class="alert alert-info" style="font-size:11.5px;margin-top:4px">
-          <?php echo ico('info'); ?>
-          <div>These are resolved <b>from the bastion</b> &mdash; the same as
-          <code>ssh -L &lt;local&gt;:&lt;db host&gt;:&lt;db port&gt; user@bastion</code>. If the database runs on the
-          SSH server itself, enter <code>localhost</code>.</div>
-        </div>
-      </div>
-      </div><!-- /.col-db -->
-      </div><!-- /.login-grid -->
-
-      <button type="submit" name="login" value="1" class="btn btn-primary btn-block hov" style="margin-top:6px;padding:9px">
-        <span class="btn-label"><?php echo h(__('connect_button')); ?></span>
+      <button type="submit" name="login" value="1" id="dbConnectBtn" class="btn btn-primary btn-block hov" style="margin-top:6px;padding:9px">
+        <span class="btn-label"><?php echo h($has_pending_ssh ? 'Connect to Database' : __('connect_button')); ?></span>
         <?php echo ico('arrow-right'); ?>
+      </button>
+
+      <button type="button" id="sshBackBtn" class="btn btn-ghost btn-sm btn-block hov" style="margin-top:6px;<?php echo $has_pending_ssh ? '' : 'display:none;'; ?>">
+        <?php echo ico('arrow-left'); ?> Edit SSH settings
       </button>
 
       <?php if ($vault_ok): ?>
@@ -6713,30 +6967,88 @@ $$('.null-box').forEach(function (cb) {
 var loginForm = $('#loginForm');
 if (loginForm) {
     var DEFAULT_PORTS = { mysql: '3306', pgsql: '5432', sqlite: '' };
+    var activePane = 'direct';
+    var isSshConnected = $('#sshActiveChip') && $('#sshActiveChip').style.display !== 'none';
+    if (isSshConnected) activePane = 'ssh';
+
+    function setPane(pane) {
+        activePane = pane;
+        $$('.tab[data-pane]').forEach(function (t) { t.classList.toggle('active', t.getAttribute('data-pane') === pane); });
+
+        var isSsh = pane === 'ssh';
+        var isSaved = pane === 'saved';
+        var isDirect = pane === 'direct';
+
+        var paneSaved = $('#pane-saved');
+        if (paneSaved) {
+            paneSaved.classList.toggle('on', isSaved);
+            paneSaved.style.display = isSaved ? 'block' : 'none';
+        }
+
+        var holder = $('#pane-uri-holder');
+        if (holder) {
+            holder.classList.toggle('on', isDirect);
+            holder.style.display = isDirect ? 'block' : 'none';
+        }
+
+        var stepper = $('#sshStepper');
+        if (stepper) stepper.style.display = isSsh ? 'flex' : 'none';
+
+        var sshStep1 = $('#sshStep1');
+        var sshActiveChip = $('#sshActiveChip');
+        var sshBackBtn = $('#sshBackBtn');
+        var dbConnectBtn = $('#dbConnectBtn');
+
+        $('#useSsh').value = isSsh ? '1' : '0';
+
+        if (isSaved) {
+            loginForm.style.display = 'none';
+            if (sshStep1) sshStep1.style.display = 'none';
+        } else if (isDirect) {
+            loginForm.style.display = 'block';
+            if (sshStep1) sshStep1.style.display = 'none';
+            if (sshActiveChip) sshActiveChip.style.display = 'none';
+            if (sshBackBtn) sshBackBtn.style.display = 'none';
+            if (dbConnectBtn) {
+                var lbl = dbConnectBtn.querySelector('.btn-label');
+                if (lbl) lbl.textContent = (D.i18n && D.i18n.connect_button) || 'Connect';
+            }
+            var hl = $('#hostLabel');
+            if (hl) hl.textContent = (D.i18n && D.i18n.host_label) || 'Host / Server';
+            var hr = $('#hostRow');
+            if (hr) hr.style.display = '';
+        } else if (isSsh) {
+            if (isSshConnected) {
+                // Show Step 2
+                if (sshStep1) sshStep1.style.display = 'none';
+                loginForm.style.display = 'block';
+                if (sshActiveChip) sshActiveChip.style.display = 'flex';
+                if (sshBackBtn) sshBackBtn.style.display = 'block';
+                $('#stepPill1').classList.add('done');
+                $('#stepPill1').classList.remove('active');
+                $('#stepPill2').classList.add('active');
+                if (dbConnectBtn) {
+                    var lbl2 = dbConnectBtn.querySelector('.btn-label');
+                    if (lbl2) lbl2.textContent = 'Connect to Database';
+                }
+                var hl2 = $('#hostLabel');
+                if (hl2) hl2.textContent = 'Remote DB host (from bastion)';
+            } else {
+                // Show Step 1
+                if (sshStep1) sshStep1.style.display = 'block';
+                loginForm.style.display = 'none';
+                if (sshActiveChip) sshActiveChip.style.display = 'none';
+                if (sshBackBtn) sshBackBtn.style.display = 'none';
+                $('#stepPill1').classList.add('active');
+                $('#stepPill1').classList.remove('done');
+                $('#stepPill2').classList.remove('active');
+            }
+        }
+    }
 
     $$('.tab[data-pane]').forEach(function (tab) {
         tab.addEventListener('click', function () {
-            var pane = tab.getAttribute('data-pane');
-            $$('.tab[data-pane]').forEach(function (t) { t.classList.toggle('active', t === tab); });
-            $('#pane-ssh').classList.toggle('on', pane === 'ssh');
-            $('#pane-saved').classList.toggle('on', pane === 'saved');
-            // The URL parser only makes sense for a direct connection - a
-            // connection string cannot describe a bastion hop.
-            var holder = $('#pane-uri-holder');
-            if (holder) holder.classList.toggle('on', pane === 'direct');
-            loginForm.classList.toggle('hidden', pane === 'saved');
-            $('#useSsh').value = pane === 'ssh' ? '1' : '0';
-
-            // Widen into two columns for the SSH pane so the card keeps fitting
-            // on screen instead of growing past the fold.
-            var card = document.querySelector('.login-card');
-            if (card) card.classList.toggle('wide', pane === 'ssh');
-            var note = $('#ssh-note');
-            if (note) note.classList.toggle('on', pane === 'ssh');
-
-            var hl = $('#hostLabel');
-            if (hl) hl.textContent = pane === 'ssh' ? 'Database host (as seen from the bastion)' : (D.i18n && D.i18n.host_label) || 'Host';
-            if (pane === 'ssh' && $('#dbHost').value === '') $('#dbHost').value = 'localhost';
+            setPane(tab.getAttribute('data-pane'));
         });
     });
 
@@ -6749,9 +7061,13 @@ if (loginForm) {
         $('#dbPort').placeholder = DEFAULT_PORTS[t] || '';
         var hl = $('#hostLabel');
         if (hl && isSqlite) hl.textContent = 'Path to the .sqlite file';
-        else if (hl && $('#useSsh').value !== '1') hl.textContent = (D.i18n && D.i18n.host_label) || 'Host';
+        else if (hl && $('#useSsh').value !== '1') hl.textContent = (D.i18n && D.i18n.host_label) || 'Host / Server';
         if (t === 'pgsql' && $('#dbUser').value === 'root') $('#dbUser').value = 'postgres';
         if (t === 'mysql' && $('#dbUser').value === 'postgres') $('#dbUser').value = 'root';
+        var tp = $('#targetPort');
+        if (tp && (!tp.value || tp.value === '3306' || tp.value === '5432')) {
+            tp.value = DEFAULT_PORTS[t] || '3306';
+        }
     }
     dbType.addEventListener('change', syncType);
     syncType();
@@ -6772,12 +7088,119 @@ if (loginForm) {
         });
     }
 
+    // Step 1: Connect SSH button
+    var sshConnectBtn = $('#sshConnectBtn');
+    if (sshConnectBtn) {
+        sshConnectBtn.addEventListener('click', function () {
+            var host = ($('#sshHost').value || '').trim();
+            var port = ($('#sshPort').value || '22').trim();
+            var user = ($('#sshUser').value || '').trim();
+            var auth = sshAuth ? sshAuth.value : 'agent';
+            if (!host) { toast('SSH host is required.', 'error'); $('#sshHost').focus(); return; }
+            if (!user && auth !== 'agent') { toast('SSH username is required.', 'error'); $('#sshUser').focus(); return; }
+
+            sshConnectBtn.disabled = true;
+            var lbl = sshConnectBtn.querySelector('.btn-label');
+            if (lbl) lbl.textContent = 'Opening SSH tunnel…';
+            var ic = sshConnectBtn.querySelector('.ico use');
+            if (ic) ic.setAttribute('href', '#i-loader-circle');
+            sshConnectBtn.querySelector('.ico').classList.add('ico-spin');
+
+            var body = new URLSearchParams();
+            body.set('csrf_token', CSRF);
+            body.set('ssh_host', host);
+            body.set('ssh_port', port);
+            body.set('ssh_user', user);
+            body.set('ssh_auth', auth);
+            body.set('ssh_pass', $('#sshPass') ? $('#sshPass').value : '');
+            body.set('ssh_key', $('#sshKey') ? $('#sshKey').value : '');
+            body.set('ssh_key_pass', $('#sshKeyPass') ? $('#sshKeyPass').value : '');
+            body.set('ssh_key_mode', $('#sshKeyMode') ? $('#sshKeyMode').value : 'paste');
+            body.set('ssh_local_port', $('#sshLocalPort') ? $('#sshLocalPort').value : '');
+            body.set('target_host', $('#targetHost') ? ($('#targetHost').value || '127.0.0.1') : '127.0.0.1');
+            body.set('target_port', $('#targetPort') ? ($('#targetPort').value || DEFAULT_PORTS[dbType.value] || '3306') : (DEFAULT_PORTS[dbType.value] || '3306'));
+
+            fetch('?action=ssh_connect', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+                body: body.toString()
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                sshConnectBtn.disabled = false;
+                if (lbl) lbl.textContent = 'Connect SSH Tunnel';
+                if (ic) ic.setAttribute('href', '#i-arrow-right');
+                sshConnectBtn.querySelector('.ico').classList.remove('ico-spin');
+
+                if (d && d.ok) {
+                    isSshConnected = true;
+                    var detailStr = (d.user ? d.user + '@' : '') + d.host + ' (port ' + d.port + ')';
+                    $('#sshActiveDetails').textContent = detailStr;
+                    if ($('#dbHost') && $('#targetHost')) $('#dbHost').value = $('#targetHost').value || '127.0.0.1';
+                    if ($('#dbPort') && $('#targetPort')) $('#dbPort').value = $('#targetPort').value || DEFAULT_PORTS[dbType.value] || '';
+                    toast('SSH tunnel established!', 'ok', 2000);
+                    setPane('ssh');
+                    var pw = $('#dbPass');
+                    if (pw) setTimeout(function () { pw.focus(); }, 100);
+                } else {
+                    toast((d && d.error) || 'Failed to establish SSH tunnel.', 'error', 7000);
+                }
+            })
+            .catch(function (err) {
+                sshConnectBtn.disabled = false;
+                if (lbl) lbl.textContent = 'Connect SSH Tunnel';
+                if (ic) ic.setAttribute('href', '#i-arrow-right');
+                sshConnectBtn.querySelector('.ico').classList.remove('ico-spin');
+                toast('Network error while connecting SSH tunnel.', 'error');
+            });
+        });
+    }
+
+    // Step 2: Disconnect SSH button
+    var sshDisconnectBtn = $('#sshDisconnectBtn');
+    if (sshDisconnectBtn) {
+        sshDisconnectBtn.addEventListener('click', function () {
+            sshDisconnectBtn.disabled = true;
+            var body = new URLSearchParams();
+            body.set('csrf_token', CSRF);
+            fetch('?action=ssh_disconnect', {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
+                body: body.toString()
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                sshDisconnectBtn.disabled = false;
+                isSshConnected = false;
+                toast('SSH tunnel disconnected.', 'info', 1800);
+                setPane('ssh');
+            })
+            .catch(function () {
+                sshDisconnectBtn.disabled = false;
+                isSshConnected = false;
+                setPane('ssh');
+            });
+        });
+    }
+
+    // Step 2: Back to SSH settings
+    var sshBackBtn = $('#sshBackBtn');
+    if (sshBackBtn) {
+        sshBackBtn.addEventListener('click', function () {
+            $('#sshStep1').style.display = 'block';
+            loginForm.style.display = 'none';
+            $('#stepPill1').classList.add('active');
+            $('#stepPill1').classList.remove('done');
+            $('#stepPill2').classList.remove('active');
+        });
+    }
+
+    // Direct URL input
     var uri = $('#uriInput');
     if (uri) uri.addEventListener('input', function () {
         var v = this.value.trim();
         if (!v) return;
         try {
-            // sqlite:///path has an empty authority; treat the rest as a file path.
             var sq = v.match(/^sqlite:\/\/(.*)$/i);
             if (sq) {
                 dbType.value = 'sqlite'; syncType();
@@ -6800,19 +7223,15 @@ if (loginForm) {
         } catch (_) {}
     });
 
-    // Show progress: opening a tunnel can take a few seconds.
+    // Form submission progress indicator
     loginForm.addEventListener('submit', function () {
         var b = loginForm.querySelector('[name=login]');
         if (!b) return;
         var lbl = b.querySelector('.btn-label');
-        if (lbl) lbl.textContent = $('#useSsh').value === '1' ? 'Opening SSH tunnel…' : 'Connecting…';
+        if (lbl) lbl.textContent = $('#useSsh').value === '1' ? 'Connecting to database…' : 'Connecting…';
         var ic = b.querySelector('.ico use');
         if (ic) ic.setAttribute('href', '#i-loader-circle');
         b.querySelector('.ico').classList.add('ico-spin');
-        // Disable on the next task, not now: this button is the submitter, and a
-        // disabled control is dropped from the form data set. Disabling it here
-        // loses "login=1", so PHP never sees a login attempt and silently
-        // re-renders the login page - an unexplained loop.
         setTimeout(function () { b.disabled = true; }, 0);
     });
 
