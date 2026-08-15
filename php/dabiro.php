@@ -2523,36 +2523,33 @@ function login(array $cfg)
     $ssh = null;
     $host = $cfg['host'];
     $port = $cfg['port'];
+    $hasPendingSsh = !empty($_SESSION['pending_ssh']);
 
-    $hasPendingSsh = false;
-    if (!empty($_SESSION['pending_ssh'])) {
-        $st = SshTunnel::status($_SESSION['pending_ssh']);
-        if (!empty($st['up'])) {
-            $hasPendingSsh = true;
-        }
-    }
+    if ($hasPendingSsh) {
+        $ssh = $_SESSION['pending_ssh'];
+        $t = SshTunnel::ensure($ssh);
+        if (empty($t['ok'])) return $t['error'];
+        $host = '127.0.0.1';
+        $port = $t['port'];
+        $ssh['local_port'] = $t['port'];
+        $ssh['port_bound'] = $t['port'];
+        $ssh['pid'] = $t['pid'];
+        $_SESSION['pending_ssh'] = $ssh;
+    } elseif (!empty($cfg['ssh']['enabled'])) {
+        $ssh = $cfg['ssh'];
+        // The DB host/port in the form are resolved *from the bastion*, which is
+        // why "localhost" here means the remote server's own loopback - exactly
+        // what `ssh -L <local>:localhost:<port> user@host` does.
+        $ssh['target_host'] = $cfg['host'] !== '' ? $cfg['host'] : '127.0.0.1';
+        $ssh['target_port'] = (int)($cfg['port'] ?: default_port($cfg['type']));
 
-    if (!empty($cfg['ssh']['enabled']) || $hasPendingSsh) {
-        if ($hasPendingSsh) {
-            $ssh = $_SESSION['pending_ssh'];
-            $host = '127.0.0.1';
-            $port = $ssh['local_port'] ?? $ssh['port_bound'] ?? $ssh['port'];
-        } else {
-            $ssh = $cfg['ssh'];
-            // The DB host/port in the form are resolved *from the bastion*, which is
-            // why "localhost" here means the remote server's own loopback - exactly
-            // what `ssh -L <local>:localhost:<port> user@host` does.
-            $ssh['target_host'] = $cfg['host'] !== '' ? $cfg['host'] : '127.0.0.1';
-            $ssh['target_port'] = (int)($cfg['port'] ?: default_port($cfg['type']));
+        $t = SshTunnel::ensure($ssh);
+        if (empty($t['ok'])) return $t['error'];
 
-            $t = SshTunnel::ensure($ssh);
-            if (empty($t['ok'])) return $t['error'];
-
-            $host = '127.0.0.1';
-            $port = $t['port'];
-            $ssh['local_port'] = $t['port'];
-            $ssh['port'] = $t['port'];
-        }
+        $host = '127.0.0.1';
+        $port = $t['port'];
+        $ssh['local_port'] = $t['port'];
+        $ssh['port'] = $t['port'];
     }
 
     $db = new DbConnection();
