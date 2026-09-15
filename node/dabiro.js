@@ -1037,9 +1037,17 @@ function truncateCell(str, len = 120) {
 
 function qs(obj) {
     const p = new URLSearchParams();
-    for (const [k, v] of Object.entries(obj)) {
-        if (v !== '' && v !== null && v !== undefined) p.set(k, String(v));
-    }
+    const build = (item, prefix) => {
+        if (item === null || item === undefined || item === '') return;
+        if (typeof item === 'object') {
+            for (const [k, v] of Object.entries(item)) {
+                build(v, prefix ? `${prefix}[${k}]` : k);
+            }
+        } else {
+            p.append(prefix, String(item));
+        }
+    };
+    build(obj, '');
     return p.toString();
 }
 
@@ -2526,9 +2534,26 @@ async function pageBrowse(V, db, query) {
     const pages = Math.max(1, Math.ceil(cnt.n / limit));
     const curP = Math.min(reqP, pages);
 
+    const browseUrl = (overrides = {}) => {
+        const params = {
+            page: 'browse',
+            table,
+            limit,
+            p: curP,
+        };
+        if (sortCol) {
+            params.sort = sortCol;
+            params.dir = sortDir;
+        }
+        if (f.raw && f.raw.length) params.where = f.raw;
+        if (query.search) params.search = query.search;
+        if (query.search_field) params.search_field = query.search_field;
+        return ctxUrl(V, Object.assign(params, overrides));
+    };
+
     const head = cols.map((c) => {
         const nd = (sortCol === c.Field && sortDir === 'ASC') ? 'DESC' : 'ASC';
-        return `<th><a href="${h(ctxUrl(V, { page: 'browse', table, sort: c.Field, dir: nd, limit }))}">
+        return `<th><a href="${h(browseUrl({ sort: c.Field, dir: nd, p: 1 }))}">
           ${h(c.Field)}${sortCol === c.Field ? ico(sortDir === 'ASC' ? 'arrow-up' : 'arrow-down') : ''}
           ${pk.includes(c.Field) ? ico('key-round') : ''}</a></th>`;
     }).join('');
@@ -2573,7 +2598,7 @@ async function pageBrowse(V, db, query) {
         <button type="button" class="btn btn-ghost btn-icon rm-filter" style="flex:0">${ico('x')}</button>
       </div>`).join('');
 
-    const pg = (p) => h(ctxUrl(V, { page: 'browse', table, p, sort: sortCol, dir: sortDir, limit }));
+    const pg = (p) => h(browseUrl({ p }));
 
     return `
   ${err ? alertBox('error', 'circle-alert', err) : ''}
@@ -2597,11 +2622,13 @@ async function pageBrowse(V, db, query) {
       <input type="hidden" name="schema" value="${h(V.selectedSchema)}">
       <input type="hidden" name="table" value="${h(table)}">
       <input type="hidden" name="limit" value="${limit}">
+      ${sortCol ? `<input type="hidden" name="sort" value="${h(sortCol)}">
+      <input type="hidden" name="dir" value="${h(sortDir)}">` : ''}
       <div id="filterRows">${filterRows}</div>
       <div class="flex" style="margin-top:8px">
         <button type="button" class="btn btn-default btn-sm hov" id="addFilter">${ico('plus')} ${h(t(V.lang, 'add_condition'))}</button>
         <span class="right flex">
-          <a href="${h(ctxUrl(V, { page: 'browse', table }))}" class="btn btn-ghost btn-sm">${h(t(V.lang, 'clear'))}</a>
+          <a href="${h(ctxUrl(V, { page: 'browse', table, sort: sortCol, dir: sortDir, limit }))}" class="btn btn-ghost btn-sm">${h(t(V.lang, 'clear'))}</a>
           <button type="submit" class="btn btn-primary btn-sm hov">${ico('funnel')} Apply</button></span>
       </div>
     </form>
@@ -2617,15 +2644,15 @@ async function pageBrowse(V, db, query) {
     <div class="flex flex-wrap" style="padding:10px 14px;background:var(--surface-2);border-top:1px solid var(--border);gap:12px">
       <label class="flex small muted" style="gap:6px">${h(t(V.lang, 'rows_per_page'))}
         <select class="input-sm" style="width:auto" onchange="location.href=this.value">
-          ${[25, 50, 100, 250, 500].map((l) => `<option value="${h(ctxUrl(V, { page: 'browse', table, limit: l, sort: sortCol, dir: sortDir }))}" ${l === limit ? 'selected' : ''}>${l}</option>`).join('')}
+          ${[25, 50, 100, 250, 500].map((l) => `<option value="${h(browseUrl({ limit: l, p: 1 }))}" ${l === limit ? 'selected' : ''}>${l}</option>`).join('')}
         </select></label>
       ${pk.length ? `<span class="small faint hide-sm">${ico('info')} Double-click a cell to edit it inline</span>` : ''}
       <span class="right flex" style="gap:4px">
-        <a class="btn btn-default btn-sm hov" ${curP <= 1 ? 'aria-disabled="true"' : `href="${pg(1)}"`}>${ico('chevrons-left')}</a>
-        <a class="btn btn-default btn-sm hov" ${curP <= 1 ? 'aria-disabled="true"' : `href="${pg(curP - 1)}"`}>${ico('chevron-left')}</a>
+        <a class="btn btn-default btn-sm hov ${curP <= 1 ? 'disabled' : ''}" ${curP <= 1 ? 'aria-disabled="true"' : `href="${pg(1)}"`}>${ico('chevrons-left')}</a>
+        <a class="btn btn-default btn-sm hov ${curP <= 1 ? 'disabled' : ''}" ${curP <= 1 ? 'aria-disabled="true"' : `href="${pg(curP - 1)}"`}>${ico('chevron-left')}</a>
         <span class="small mono" style="padding:0 8px">${formatNum(curP)} / ${formatNum(pages)}</span>
-        <a class="btn btn-default btn-sm hov" ${curP >= pages ? 'aria-disabled="true"' : `href="${pg(curP + 1)}"`}>${ico('chevron-right')}</a>
-        <a class="btn btn-default btn-sm hov" ${curP >= pages ? 'aria-disabled="true"' : `href="${pg(pages)}"`}>${ico('chevrons-right')}</a>
+        <a class="btn btn-default btn-sm hov ${curP >= pages ? 'disabled' : ''}" ${curP >= pages ? 'aria-disabled="true"' : `href="${pg(curP + 1)}"`}>${ico('chevron-right')}</a>
+        <a class="btn btn-default btn-sm hov ${curP >= pages ? 'disabled' : ''}" ${curP >= pages ? 'aria-disabled="true"' : `href="${pg(pages)}"`}>${ico('chevrons-right')}</a>
       </span>
     </div>
   </div>`;
