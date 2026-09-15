@@ -5560,6 +5560,24 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
     $curP = min($curP, $pages);
 
     $filterOpen = (bool)$whereIn;
+
+    $browseUrl = function (array $overrides = []) use ($selected_table, $sortCol, $sortDir, $limit, $curP, $whereIn, $simpleQ, $simpleF) {
+        $params = [
+            'page'  => 'browse',
+            'table' => $selected_table,
+            'limit' => $limit,
+            'p'     => $curP,
+        ];
+        if ($sortCol !== '') {
+            $params['sort'] = $sortCol;
+            $params['dir']  = $sortDir;
+        }
+        if (!empty($whereIn)) $params['where'] = $whereIn;
+        if ($simpleQ !== '')  $params['search'] = $simpleQ;
+        if ($simpleF !== '')  $params['search_field'] = $simpleF;
+
+        return ctx_url(array_merge($params, $overrides));
+    };
   ?>
   <div class="page-head">
     <div>
@@ -5585,6 +5603,10 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
       <input type="hidden" name="schema" value="<?php echo h($selected_schema); ?>">
       <input type="hidden" name="table" value="<?php echo h($selected_table); ?>">
       <input type="hidden" name="limit" value="<?php echo (int)$limit; ?>">
+      <?php if ($sortCol !== ''): ?>
+        <input type="hidden" name="sort" value="<?php echo h($sortCol); ?>">
+        <input type="hidden" name="dir" value="<?php echo h($sortDir); ?>">
+      <?php endif; ?>
       <div id="filterRows"><?php foreach ($whereIn as $i => $w): ?>
         <div class="row filter-row" style="margin-bottom:8px;align-items:center">
           <select name="where[<?php echo (int)$i; ?>][col]" class="input-sm" style="flex:2">
@@ -5600,7 +5622,7 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
       <div class="flex" style="margin-top:8px">
         <button type="button" class="btn btn-default btn-sm hov" id="addFilter"><?php echo ico('plus'); ?> <?php echo h(__('add_condition')); ?></button>
         <span class="right flex">
-          <a href="<?php echo h(ctx_url(['page' => 'browse', 'table' => $selected_table])); ?>" class="btn btn-ghost btn-sm"><?php echo h(__('clear')); ?></a>
+          <a href="<?php echo h(ctx_url(['page' => 'browse', 'table' => $selected_table, 'sort' => $sortCol, 'dir' => $sortDir, 'limit' => $limit])); ?>" class="btn btn-ghost btn-sm"><?php echo h(__('clear')); ?></a>
           <button type="submit" class="btn btn-primary btn-sm hov"><?php echo ico('funnel'); ?> Apply</button>
         </span>
       </div>
@@ -5614,7 +5636,7 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
           <th class="pick" style="width:76px"><?php echo h(__('actions')); ?></th>
           <?php foreach ($cols as $c): $f = $c['Field'];
             $nd = ($sortCol === $f && $sortDir === 'ASC') ? 'DESC' : 'ASC'; ?>
-            <th><a href="<?php echo h(ctx_url(['page' => 'browse', 'table' => $selected_table, 'sort' => $f, 'dir' => $nd, 'limit' => $limit])); ?>">
+            <th><a href="<?php echo h($browseUrl(['sort' => $f, 'dir' => $nd, 'p' => 1])); ?>">
               <?php echo h($f); ?>
               <?php if ($sortCol === $f) echo ico($sortDir === 'ASC' ? 'arrow-up' : 'arrow-down'); ?>
               <?php if (in_array($f, $pk, true)) echo ico('key-round'); ?>
@@ -5664,22 +5686,17 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
       <label class="flex small muted" style="gap:6px"><?php echo h(__('rows_per_page')); ?>
         <select class="input-sm" style="width:auto" onchange="location.href=this.value">
           <?php foreach ([25, 50, 100, 250, 500] as $l): ?>
-            <option value="<?php echo h(ctx_url(['page' => 'browse', 'table' => $selected_table, 'limit' => $l, 'sort' => $sortCol, 'dir' => $sortDir])); ?>" <?php echo $l === $limit ? 'selected' : ''; ?>><?php echo $l; ?></option>
+            <option value="<?php echo h($browseUrl(['limit' => $l, 'p' => 1])); ?>" <?php echo $l === $limit ? 'selected' : ''; ?>><?php echo $l; ?></option>
           <?php endforeach; ?>
         </select>
       </label>
       <?php if ($pk): ?><span class="small faint hide-sm"><?php echo ico('info'); ?> Double-click a cell to edit it inline</span><?php endif; ?>
       <span class="right flex" style="gap:4px">
-        <?php
-          $pg = function ($p) use ($selected_table, $sortCol, $sortDir, $limit) {
-              return h(ctx_url(['page' => 'browse', 'table' => $selected_table, 'p' => $p, 'sort' => $sortCol, 'dir' => $sortDir, 'limit' => $limit]));
-          };
-        ?>
-        <a class="btn btn-default btn-sm hov <?php echo $curP <= 1 ? 'disabled' : ''; ?>" <?php echo $curP <= 1 ? 'aria-disabled="true"' : 'href="' . $pg(1) . '"'; ?>><?php echo ico('chevrons-left'); ?></a>
-        <a class="btn btn-default btn-sm hov" <?php echo $curP <= 1 ? 'aria-disabled="true"' : 'href="' . $pg($curP - 1) . '"'; ?>><?php echo ico('chevron-left'); ?></a>
+        <a class="btn btn-default btn-sm hov <?php echo $curP <= 1 ? 'disabled' : ''; ?>" <?php echo $curP <= 1 ? 'aria-disabled="true"' : 'href="' . h($browseUrl(['p' => 1])) . '"'; ?>><?php echo ico('chevrons-left'); ?></a>
+        <a class="btn btn-default btn-sm hov <?php echo $curP <= 1 ? 'disabled' : ''; ?>" <?php echo $curP <= 1 ? 'aria-disabled="true"' : 'href="' . h($browseUrl(['p' => $curP - 1])) . '"'; ?>><?php echo ico('chevron-left'); ?></a>
         <span class="small mono" style="padding:0 8px"><?php echo format_num($curP); ?> / <?php echo format_num($pages); ?></span>
-        <a class="btn btn-default btn-sm hov" <?php echo $curP >= $pages ? 'aria-disabled="true"' : 'href="' . $pg($curP + 1) . '"'; ?>><?php echo ico('chevron-right'); ?></a>
-        <a class="btn btn-default btn-sm hov" <?php echo $curP >= $pages ? 'aria-disabled="true"' : 'href="' . $pg($pages) . '"'; ?>><?php echo ico('chevrons-right'); ?></a>
+        <a class="btn btn-default btn-sm hov <?php echo $curP >= $pages ? 'disabled' : ''; ?>" <?php echo $curP >= $pages ? 'aria-disabled="true"' : 'href="' . h($browseUrl(['p' => $curP + 1])) . '"'; ?>><?php echo ico('chevron-right'); ?></a>
+        <a class="btn btn-default btn-sm hov <?php echo $curP >= $pages ? 'disabled' : ''; ?>" <?php echo $curP >= $pages ? 'aria-disabled="true"' : 'href="' . h($browseUrl(['p' => $pages])) . '"'; ?>><?php echo ico('chevrons-right'); ?></a>
       </span>
     </div>
   </div>
