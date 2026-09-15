@@ -1386,7 +1386,7 @@ class Db {
                     // itself so each statement gets its own timed result.
                     multipleStatements: false,
                     dateStrings: true, supportBigNumbers: true, bigNumberStrings: true,
-                    connectTimeout: 15000,
+                    connectTimeout: 5000,
                 };
                 if (ssl) opts.ssl = { rejectUnauthorized: false };
                 this.conn = await mysql2.createConnection(opts);
@@ -1395,7 +1395,7 @@ class Db {
                 if (!pg) return 'The pg package is not installed. Run: npm install pg';
                 const opts = {
                     host, port: parseInt(port, 10) || 5432, user, password: pass,
-                    database: dbname || 'postgres', connectionTimeoutMillis: 15000,
+                    database: dbname || 'postgres', connectionTimeoutMillis: 5000,
                 };
                 if (ssl) opts.ssl = { rejectUnauthorized: false };
                 this.conn = new pg.Client(opts);
@@ -2506,15 +2506,25 @@ async function pageBrowse(V, db, query) {
     const f = buildWhere(db, query, cols, colNames);
     const orderSql = sortCol ? ` ORDER BY ${db.quoteId(sortCol)} ${sortDir}` : '';
 
-    const cnt = await db.getRowCountInfo(table, f.where, f.params);
-    const pages = Math.max(1, Math.ceil(cnt.n / limit));
-    const curP = Math.min(Math.max(1, parseInt(query.p, 10) || 1), pages);
-    const offset = (curP - 1) * limit;
+    const reqP = Math.max(1, parseInt(query.p, 10) || 1);
+    const offset = (reqP - 1) * limit;
 
     let rows = [], err = null;
     try {
-        rows = await db.all(`SELECT * FROM ${db.qualify(table)}${f.where}${orderSql} LIMIT ${limit} OFFSET ${offset}`, f.params);
+        rows = await db.all(`SELECT * FROM ${db.qualify(table)}${f.where}${orderSql} LIMIT ${limit + 1} OFFSET ${offset}`, f.params);
     } catch (e) { err = e.message; }
+
+    const hasMore = rows.length > limit;
+    if (hasMore) rows.pop();
+
+    let cnt;
+    if (reqP === 1 && !hasMore) {
+        cnt = { n: rows.length, exact: true };
+    } else {
+        cnt = await db.getRowCountInfo(table, f.where, f.params);
+    }
+    const pages = Math.max(1, Math.ceil(cnt.n / limit));
+    const curP = Math.min(reqP, pages);
 
     const head = cols.map((c) => {
         const nd = (sortCol === c.Field && sortDir === 'ASC') ? 'DESC' : 'ASC';
