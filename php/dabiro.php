@@ -1215,7 +1215,7 @@ function __($key, $default = null)
  */
 class SshTunnel
 {
-    const READY_TIMEOUT = 20;   // seconds to wait for the forward to come up
+    const READY_TIMEOUT = 8;    // seconds to wait for the forward to come up
     const ORPHAN_TTL    = 43200; // reap registry entries older than 12h
 
     /** Is tunnelling possible in this PHP environment? */
@@ -1309,7 +1309,7 @@ class SshTunnel
         } elseif (!is_dir('/proc/' . (int)$pid)) {
             // No posix ext and no procfs - fall through to the socket probe alone.
         }
-        $sock = @fsockopen('127.0.0.1', (int)$port, $errno, $errstr, 1.0);
+        $sock = @fsockopen('127.0.0.1', (int)$port, $errno, $errstr, 0.2);
         if (!$sock) return false;
         fclose($sock);
         return true;
@@ -1404,6 +1404,7 @@ class SshTunnel
             escapeshellarg($ssh),
             '-N',                                   // no remote command, forwarding only
             '-T',                                   // never allocate a TTY
+            '-C',                                   // enable compression for lower network latency
             '-L', escapeshellarg("127.0.0.1:$lPort:$tHost:$tPort"),
             '-p', (string)$sshPort,
             '-o', escapeshellarg('ExitOnForwardFailure=yes'),
@@ -1411,7 +1412,8 @@ class SshTunnel
             '-o', escapeshellarg('UserKnownHostsFile=' . $known),
             '-o', escapeshellarg('ServerAliveInterval=15'),
             '-o', escapeshellarg('ServerAliveCountMax=3'),
-            '-o', escapeshellarg('ConnectTimeout=10'),
+            '-o', escapeshellarg('ConnectTimeout=5'),
+            '-o', escapeshellarg('ConnectionAttempts=1'),
             '-o', escapeshellarg('NumberOfPasswordPrompts=1'),
         ];
 
@@ -1701,6 +1703,7 @@ class DbConnection
             PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
             PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
             PDO::ATTR_STRINGIFY_FETCHES  => false,
+            PDO::ATTR_TIMEOUT            => 5,
         ];
 
         try {
@@ -1717,7 +1720,7 @@ class DbConnection
 
                 case 'pgsql':
                     $p = $port ?: '5432';
-                    $dsn = "pgsql:host=$host;port=$p;dbname=" . ($dbname ?: 'postgres');
+                    $dsn = "pgsql:host=$host;port=$p;dbname=" . ($dbname ?: 'postgres') . ';connect_timeout=5';
                     if ($ssl) $dsn .= ';sslmode=require';
                     $this->pdo = new PDO($dsn, $user, $pass, $opts);
                     $this->database = $dbname ?: 'postgres';
@@ -3066,6 +3069,11 @@ if ($db) {
     }
 
     $req_schema = $db->getSchema();
+}
+
+// Release session lock early so concurrent requests, AJAX polls, and new tabs don't block
+if (session_status() === PHP_SESSION_ACTIVE) {
+    session_write_close();
 }
 
 // ── JSON endpoints ────────────────────────────────────────────────────────────
@@ -5528,17 +5536,28 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
     $whereSql = $clauses ? ' WHERE ' . implode(' AND ', $clauses) : '';
     $orderSql = (in_array($sortCol, $colNames, true)) ? ' ORDER BY ' . $db->quoteIdentifier($sortCol) . " $sortDir" : '';
 
-    $cntInfo = $db->getRowCountInfo($selected_table, $whereSql, $params);
-    $total = $cntInfo['n'];
-    $pages = max(1, (int)ceil($total / $limit));
-    $curP = min($curP, $pages);
     $offset = ($curP - 1) * $limit;
 
     $rows = [];
     try {
         $rows = $db->all('SELECT * FROM ' . $db->qualify($selected_table) . $whereSql . $orderSql
-                         . ' LIMIT ' . (int)$limit . ' OFFSET ' . (int)$offset, $params);
+                         . ' LIMIT ' . ((int)$limit + 1) . ' OFFSET ' . (int)$offset, $params);
     } catch (Throwable $e) { $error_message = $e->getMessage(); }
+
+    $hasMore = count($rows) > $limit;
+    if ($hasMore) {
+        array_pop($rows);
+    }
+
+    if ($curP === 1 && !$hasMore) {
+        $cntInfo = ['n' => count($rows), 'exact' => true];
+    } else {
+        $cntInfo = $db->getRowCountInfo($selected_table, $whereSql, $params);
+    }
+
+    $total = $cntInfo['n'];
+    $pages = max(1, (int)ceil($total / $limit));
+    $curP = min($curP, $pages);
 
     $filterOpen = (bool)$whereIn;
   ?>
