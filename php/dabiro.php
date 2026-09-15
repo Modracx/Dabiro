@@ -3480,17 +3480,23 @@ if ($db) {
         }
     }
 
-    // Execute SQL
-    if (isset($_POST['execute_sql']) || isset($_POST['export_query'])) {
+    // Execute SQL or Export Query Results
+    if (isset($_POST['execute_sql']) || isset($_POST['export_query']) || isset($_POST['export_result_format']) || (isset($_POST['action']) && $_POST['action'] === 'export_query_result')) {
         if (!validate_csrf_token(get_post('csrf_token'))) {
             $sql_error = 'Security token validation failed.';
         } else {
-            $raw = trim(get_post('sql'));
+            $raw = trim(get_post('sql', get_post('query_sql', '')));
 
             if (isset($_POST['export_query'])) {
                 header('Content-Type: application/sql; charset=utf-8');
                 header('Content-Disposition: attachment; filename="query_' . date('Ymd_His') . '.sql"');
                 echo "-- Dabiro query export\n-- " . date('c') . "\n\n" . $raw . "\n";
+                exit;
+            }
+
+            if (isset($_POST['export_result_format']) || (isset($_POST['action']) && $_POST['action'] === 'export_query_result')) {
+                $fmt = get_post('export_result_format', get_post('export_format', 'csv'));
+                export_query_result($db, $raw, $fmt);
                 exit;
             }
 
@@ -3745,6 +3751,135 @@ function export_rows(DbConnection $db, $table, $withData = true)
     if (!$st) return;
     while (($row = $st->fetch(PDO::FETCH_ASSOC)) !== false) {
         yield $row;
+    }
+}
+
+/** Streams the full result of a single query or script directly to the browser. */
+function export_query_result(DbConnection $db, string $rawSql, string $format)
+{
+    $format = in_array(strtolower($format), ['csv', 'json', 'sql', 'xml'], true) ? strtolower($format) : 'csv';
+    $stamp = date('Ymd_His');
+    $basename = 'query_result_' . $stamp;
+
+    $send = function ($mime, $ext) use ($basename) {
+        if (ob_get_level()) ob_end_clean();
+        header('Content-Type: ' . $mime . '; charset=utf-8');
+        header('Content-Disposition: attachment; filename="' . $basename . '.' . $ext . '"');
+        header('X-Content-Type-Options: nosniff');
+    };
+    $flush = function () {
+        if (function_exists('flush')) flush();
+    };
+
+    $statements = split_sql($rawSql);
+    if (empty($statements)) {
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "No SQL statement provided.";
+        exit;
+    }
+
+    $st = null;
+    $lastSql = '';
+    try {
+        foreach ($statements as $stmt) {
+            $lastSql = $stmt;
+            $st = $db->getPdo()->query($stmt);
+        }
+    } catch (Throwable $e) {
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "Error executing query for export: " . $e->getMessage();
+        exit;
+    }
+
+    if (!$st) {
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "Query returned no results.";
+        exit;
+    }
+
+    switch ($format) {
+        case 'json':
+            $send('application/json', 'json');
+            echo "[\n";
+            $first = true;
+            while (($row = $st->fetch(PDO::FETCH_ASSOC)) !== false) {
+                if (!$first) echo ",\n";
+                $first = false;
+                echo '  ' . json_encode($row, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+                $flush();
+            }
+            echo "\n]\n";
+            exit;
+
+        case 'xml':
+            $send('application/xml', 'xml');
+            echo "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<results>\n";
+            while (($row = $st->fetch(PDO::FETCH_ASSOC)) !== false) {
+                echo "  <row>\n";
+                foreach ($row as $k => $v) {
+                    $tag = preg_replace('/[^A-Za-z0-9_.-]/', '_', (string)$k);
+                    if ($tag === '' || ctype_digit($tag[0])) $tag = 'c_' . $tag;
+                    if ($v === null) {
+                        echo "    <$tag xsi:nil=\"true\"/>\n";
+                    } else {
+                        echo "    <$tag>" . htmlspecialchars((string)$v, ENT_XML1, 'UTF-8') . "</$tag>\n";
+                    }
+                }
+                echo "  </row>\n";
+                $flush();
+            }
+            echo "</results>\n";
+            exit;
+
+        case 'sql':
+            $send('application/sql', 'sql');
+            echo "-- Dabiro query result export\n";
+            echo '-- Engine:   ' . $db->getType() . ' ' . $db->serverVersion() . "\n";
+            echo '-- Database: ' . $db->getDatabase() . "\n";
+            echo '-- Date:     ' . date('c') . "\n";
+            echo '-- Query:    ' . str_replace(["\r", "\n"], ' ', $lastSql) . "\n\n";
+
+            $cols = null;
+            $count = 0;
+            while (($row = $st->fetch(PDO::FETCH_ASSOC)) !== false) {
+                if ($cols === null) {
+                    $cols = implode(', ', array_map([$db, 'quoteIdentifier'], array_keys($row)));
+                }
+                $vals = [];
+                foreach ($row as $v) {
+                    $vals[] = $v === null ? 'NULL'
+                        : (is_int($v) || is_float($v) ? (string)$v : $db->quote((string)$v));
+                }
+                echo "INSERT INTO " . $db->quoteIdentifier('result') . " ($cols) VALUES (" . implode(', ', $vals) . ");\n";
+                $count++;
+                if ($count % 200 === 0) $flush();
+            }
+            exit;
+
+        case 'csv':
+        default:
+            $send('text/csv', 'csv');
+            $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            $header = false;
+            while (($row = $st->fetch(PDO::FETCH_ASSOC)) !== false) {
+                if (!$header) {
+                    fputcsv($out, array_keys($row));
+                    $header = true;
+                }
+                fputcsv($out, array_map(function ($v) { return $v === null ? '' : $v; }, $row));
+                $flush();
+            }
+            if (!$header && $st->columnCount()) {
+                $cols = [];
+                for ($i = 0; $i < $st->columnCount(); $i++) {
+                    $meta = $st->getColumnMeta($i);
+                    $cols[] = $meta['name'] ?? ('col_' . ($i + 1));
+                }
+                fputcsv($out, $cols);
+            }
+            fclose($out);
+            exit;
     }
 }
 
@@ -4183,8 +4318,9 @@ code, pre, .mono { font-family: var(--mono); font-size: .92em; }
     border-radius: var(--r);
     margin-bottom: 16px;
     box-shadow: var(--shadow-1);
-    overflow: hidden;
 }
+.card > :first-child { border-top-left-radius: inherit; border-top-right-radius: inherit; }
+.card > :last-child { border-bottom-left-radius: inherit; border-bottom-right-radius: inherit; }
 .card-head {
     padding: 11px 15px;
     border-bottom: 1px solid var(--border);
@@ -4235,6 +4371,73 @@ code, pre, .mono { font-family: var(--mono); font-size: .92em; }
 .btn-group .btn { border-radius: 0; margin-inline-start: -1px; }
 .btn-group .btn:first-child { border-start-start-radius: var(--r-sm); border-end-start-radius: var(--r-sm); margin-inline-start: 0; }
 .btn-group .btn:last-child { border-start-end-radius: var(--r-sm); border-end-end-radius: var(--r-sm); }
+
+.dropdown { position: relative; display: inline-flex; }
+.dropdown-menu {
+    position: absolute;
+    top: calc(100% + 5px);
+    inset-inline-start: 0;
+    z-index: 100;
+    min-width: 185px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--r);
+    box-shadow: var(--shadow-3);
+    padding: 5px;
+    display: none;
+    flex-direction: column;
+    gap: 2px;
+}
+.right .dropdown-menu, .dropdown-menu-end {
+    inset-inline-start: auto;
+    inset-inline-end: 0;
+}
+.dropdown.open > .dropdown-menu { display: flex; animation: dropFade .14s var(--ease); }
+.dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 9px;
+    border: 0;
+    background: transparent;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: start;
+    text-decoration: none;
+    font-family: inherit;
+    transition: background var(--t-fast), color var(--t-fast);
+}
+.dropdown-item:hover {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+.dropdown-item .badge {
+    margin-inline-start: auto;
+    font-size: 10px;
+    opacity: .85;
+    font-family: var(--mono);
+}
+.dropdown-item .ico {
+    width: 14px;
+    height: 14px;
+    color: var(--text-dim);
+}
+.dropdown-item:hover .ico {
+    color: var(--accent);
+}
+.dropdown-divider {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+}
+@keyframes dropFade {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
 
 kbd {
     display: inline-block;
@@ -4545,9 +4748,9 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
 .pal-empty { padding: 30px; text-align: center; color: var(--text-faint); font-size: 12.5px; }
 
 /* ─── SQL editor ───────────────────────────────────────────────────────────── */
-.sql-editor { position: relative; border: 1px solid var(--border-strong); border-radius: var(--r); overflow: hidden; background: var(--surface); }
+.sql-editor { position: relative; border: 1px solid var(--border-strong); border-radius: var(--r); background: var(--surface); }
 .sql-editor:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
-.sql-stack { position: relative; }
+.sql-stack { position: relative; border-radius: calc(var(--r) - 1px) calc(var(--r) - 1px) 0 0; overflow: hidden; }
 #sqlHighlight, #sqlInput {
     margin: 0; padding: 12px 14px;
     font-family: var(--mono); font-size: 13px; line-height: 1.6;
@@ -4577,7 +4780,7 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
 .tok-num { color: var(--code-num); }
 .tok-com { color: var(--code-com); font-style: italic; }
 .tok-fn  { color: var(--code-fn); }
-.sql-bar { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--border); background: var(--surface-2); flex-wrap: wrap; }
+.sql-bar { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-top: 1px solid var(--border); background: var(--surface-2); flex-wrap: wrap; border-radius: 0 0 calc(var(--r) - 1px) calc(var(--r) - 1px); }
 
 #sqlAuto {
     position: absolute; z-index: 30;
@@ -4848,7 +5051,7 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
 </style>
 </head>
 <body>
-<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-arrow-left" viewBox="0 0 24 24"><path class="p0" d="m12 19-7-7 7-7" /><path class="p1" d="M19 12H5" /></symbol><symbol id="i-arrow-right" viewBox="0 0 24 24"><path class="p0" d="M5 12h14" /><path class="p1" d="m12 5 7 7-7 7" /></symbol><symbol id="i-bookmark" viewBox="0 0 24 24"><path class="p0" d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z" /></symbol><symbol id="i-braces" viewBox="0 0 24 24"><path class="p0" d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1" /><path class="p1" d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1" /></symbol><symbol id="i-cable" viewBox="0 0 24 24"><path class="p0" d="M17 19a1 1 0 0 1-1-1v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2a1 1 0 0 1-1 1z" /><path class="p1" d="M17 21v-2" /><path class="p2" d="M19 14V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V10" /><path class="p3" d="M21 21v-2" /><path class="p4" d="M3 5V3" /><path class="p5" d="M4 10a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2a2 2 0 0 1-2 2z" /><path class="p6" d="M7 5V3" /></symbol><symbol id="i-check" viewBox="0 0 24 24"><path class="p0" d="M20 6 9 17l-5-5" /></symbol><symbol id="i-chevron-left" viewBox="0 0 24 24"><path class="p0" d="m15 18-6-6 6-6" /></symbol><symbol id="i-chevron-right" viewBox="0 0 24 24"><path class="p0" d="m9 18 6-6-6-6" /></symbol><symbol id="i-chevrons-left" viewBox="0 0 24 24"><path class="p0" d="m11 17-5-5 5-5" /><path class="p1" d="m18 17-5-5 5-5" /></symbol><symbol id="i-chevrons-right" viewBox="0 0 24 24"><path class="p0" d="m6 17 5-5-5-5" /><path class="p1" d="m13 17 5-5-5-5" /></symbol><symbol id="i-circle-alert" viewBox="0 0 24 24"><circle class="p0" cx="12" cy="12" r="10" /><line class="p1" x1="12" x2="12" y1="8" y2="12" /><line class="p2" x1="12" x2="12.01" y1="16" y2="16" /></symbol><symbol id="i-circle-check" viewBox="0 0 24 24"><circle class="p0" cx="12" cy="12" r="10" /><path class="p1" d="m9 12 2 2 4-4" /></symbol><symbol id="i-circle-help" viewBox="0 0 24 24"><circle class="p0" cx="12" cy="12" r="10" /><path class="p1" d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path class="p2" d="M12 17h.01" /></symbol><symbol id="i-circle-x" viewBox="0 0 24 24"><circle class="p0" cx="12" cy="12" r="10" /><path class="p1" d="m15 9-6 6" /><path class="p2" d="m9 9 6 6" /></symbol><symbol id="i-columns-3" viewBox="0 0 24 24"><rect class="p0" width="18" height="18" x="3" y="3" rx="2" /><path class="p1" d="M9 3v18" /><path class="p2" d="M15 3v18" /></symbol><symbol id="i-command" viewBox="0 0 24 24"><path class="p0" d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" /></symbol><symbol id="i-copy" viewBox="0 0 24 24"><rect class="p0" width="14" height="14" x="8" y="8" rx="2" ry="2" /><path class="p1" d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></symbol><symbol id="i-database" viewBox="0 0 24 24"><ellipse class="p0" cx="12" cy="5" rx="9" ry="3" /><path class="p1" d="M3 5V19A9 3 0 0 0 21 19V5" /><path class="p2" d="M3 12A9 3 0 0 0 21 12" /></symbol><symbol id="i-download" viewBox="0 0 24 24"><path class="p0" d="M12 15V3" /><path class="p1" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path class="p2" d="m7 10 5 5 5-5" /></symbol><symbol id="i-eye" viewBox="0 0 24 24"><path class="p0" d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle class="p1" cx="12" cy="12" r="3" /></symbol><symbol id="i-file-code-2" viewBox="0 0 24 24"><path class="p0" d="M4 12.15V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-3.35" /><path class="p1" d="M14 2v5a1 1 0 0 0 1 1h5" /><path class="p2" d="m5 16-3 3 3 3" /><path class="p3" d="m9 22 3-3-3-3" /></symbol><symbol id="i-filter" viewBox="0 0 24 24"><path class="p0" d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></symbol><symbol id="i-funnel" viewBox="0 0 24 24"><path class="p0" d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></symbol><symbol id="i-git-branch" viewBox="0 0 24 24"><path class="p0" d="M15 6a9 9 0 0 0-9 9V3" /><circle class="p1" cx="18" cy="6" r="3" /><circle class="p2" cx="6" cy="18" r="3" /></symbol><symbol id="i-grid-2x2" viewBox="0 0 24 24"><path class="p0" d="M12 3v18" /><path class="p1" d="M3 12h18" /><rect class="p2" x="3" y="3" width="18" height="18" rx="2" /></symbol><symbol id="i-history" viewBox="0 0 24 24"><path class="p0" d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path class="p1" d="M3 3v5h5" /><path class="p2" d="M12 7v5l4 2" /></symbol><symbol id="i-import" viewBox="0 0 24 24"><path class="p0" d="M12 3v12" /><path class="p1" d="m8 11 4 4 4-4" /><path class="p2" d="M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4" /></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle class="p0" cx="12" cy="12" r="10" /><path class="p1" d="M12 16v-4" /><path class="p2" d="M12 8h.01" /></symbol><symbol id="i-key-round" viewBox="0 0 24 24"><path class="p0" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle class="p1" cx="16.5" cy="7.5" r=".5" fill="currentColor" /></symbol><symbol id="i-layers" viewBox="0 0 24 24"><path class="p0" d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" /><path class="p1" d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" /><path class="p2" d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" /></symbol><symbol id="i-link" viewBox="0 0 24 24"><path class="p0" d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path class="p1" d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></symbol><symbol id="i-loader-circle" viewBox="0 0 24 24"><path class="p0" d="M21 12a9 9 0 1 1-6.219-8.56" /></symbol><symbol id="i-lock" viewBox="0 0 24 24"><rect class="p0" width="18" height="11" x="3" y="11" rx="2" ry="2" /><path class="p1" d="M7 11V7a5 5 0 0 1 10 0v4" /></symbol><symbol id="i-log-out" viewBox="0 0 24 24"><path class="p0" d="m16 17 5-5-5-5" /><path class="p1" d="M21 12H9" /><path class="p2" d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /></symbol><symbol id="i-panel-left" viewBox="0 0 24 24"><rect class="p0" width="18" height="18" x="3" y="3" rx="2" /><path class="p1" d="M9 3v18" /></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path class="p0" d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path class="p1" d="m15 5 4 4" /></symbol><symbol id="i-play" viewBox="0 0 24 24"><path class="p0" d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></symbol><symbol id="i-plug-zap" viewBox="0 0 24 24"><path class="p0" d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path class="p1" d="m2 22 3-3" /><path class="p2" d="M7.5 13.5 10 11" /><path class="p3" d="M10.5 16.5 13 14" /><path class="p4" d="m18 3-4 4h6l-4 4" /></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path class="p0" d="M5 12h14" /><path class="p1" d="M12 5v14" /></symbol><symbol id="i-refresh-cw" viewBox="0 0 24 24"><path class="p0" d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path class="p1" d="M21 3v5h-5" /><path class="p2" d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path class="p3" d="M8 16H3v5" /></symbol><symbol id="i-rotate-cw" viewBox="0 0 24 24"><path class="p0" d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path class="p1" d="M21 3v5h-5" /></symbol><symbol id="i-save" viewBox="0 0 24 24"><path class="p0" d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path class="p1" d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path class="p2" d="M7 3v4a1 1 0 0 0 1 1h7" /></symbol><symbol id="i-scan-search" viewBox="0 0 24 24"><path class="p0" d="M3 7V5a2 2 0 0 1 2-2h2" /><path class="p1" d="M17 3h2a2 2 0 0 1 2 2v2" /><path class="p2" d="M21 17v2a2 2 0 0 1-2 2h-2" /><path class="p3" d="M7 21H5a2 2 0 0 1-2-2v-2" /><circle class="p4" cx="12" cy="12" r="3" /><path class="p5" d="m16 16-1.9-1.9" /></symbol><symbol id="i-search" viewBox="0 0 24 24"><path class="p0" d="m21 21-4.34-4.34" /><circle class="p1" cx="11" cy="11" r="8" /></symbol><symbol id="i-server" viewBox="0 0 24 24"><rect class="p0" width="20" height="8" x="2" y="2" rx="2" ry="2" /><rect class="p1" width="20" height="8" x="2" y="14" rx="2" ry="2" /><line class="p2" x1="6" x2="6.01" y1="6" y2="6" /><line class="p3" x1="6" x2="6.01" y1="18" y2="18" /></symbol><symbol id="i-settings" viewBox="0 0 24 24"><path class="p0" d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /><circle class="p1" cx="12" cy="12" r="3" /></symbol><symbol id="i-shield-alert" viewBox="0 0 24 24"><path class="p0" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path class="p1" d="M12 8v4" /><path class="p2" d="M12 16h.01" /></symbol><symbol id="i-shield-check" viewBox="0 0 24 24"><path class="p0" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path class="p1" d="m9 12 2 2 4-4" /></symbol><symbol id="i-sparkles" viewBox="0 0 24 24"><path class="p0" d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path class="p1" d="M20 2v4" /><path class="p2" d="M22 4h-4" /><circle class="p3" cx="4" cy="20" r="2" /></symbol><symbol id="i-square-pen" viewBox="0 0 24 24"><path class="p0" d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path class="p1" d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" /></symbol><symbol id="i-star" viewBox="0 0 24 24"><path class="p0" d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" /></symbol><symbol id="i-table" viewBox="0 0 24 24"><path class="p0" d="M12 3v18" /><rect class="p1" width="18" height="18" x="3" y="3" rx="2" /><path class="p2" d="M3 9h18" /><path class="p3" d="M3 15h18" /></symbol><symbol id="i-table-2" viewBox="0 0 24 24"><path class="p0" d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" /></symbol><symbol id="i-terminal" viewBox="0 0 24 24"><path class="p0" d="M12 19h8" /><path class="p1" d="m4 17 6-6-6-6" /></symbol><symbol id="i-text-cursor-input" viewBox="0 0 24 24"><path class="p0" d="M12 20h-1a2 2 0 0 1-2-2 2 2 0 0 1-2 2H6" /><path class="p1" d="M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7" /><path class="p2" d="M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1" /><path class="p3" d="M6 4h1a2 2 0 0 1 2 2 2 2 0 0 1 2-2h1" /><path class="p4" d="M9 6v12" /></symbol><symbol id="i-trash-2" viewBox="0 0 24 24"><path class="p0" d="M10 11v6" /><path class="p1" d="M14 11v6" /><path class="p2" d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path class="p3" d="M3 6h18" /><path class="p4" d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></symbol><symbol id="i-triangle-alert" viewBox="0 0 24 24"><path class="p0" d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path class="p1" d="M12 9v4" /><path class="p2" d="M12 17h.01" /></symbol><symbol id="i-unplug" viewBox="0 0 24 24"><path class="p0" d="m19 5 3-3" /><path class="p1" d="m2 22 3-3" /><path class="p2" d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path class="p3" d="M7.5 13.5 10 11" /><path class="p4" d="M10.5 16.5 13 14" /><path class="p5" d="m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z" /></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path class="p0" d="M12 3v12" /><path class="p1" d="m17 8-5-5-5 5" /><path class="p2" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></symbol><symbol id="i-waypoints" viewBox="0 0 24 24"><path class="p0" d="m10.586 5.414-5.172 5.172" /><path class="p1" d="m18.586 13.414-5.172 5.172" /><path class="p2" d="M6 12h12" /><circle class="p3" cx="12" cy="20" r="2" /><circle class="p4" cx="12" cy="4" r="2" /><circle class="p5" cx="20" cy="12" r="2" /><circle class="p6" cx="4" cy="12" r="2" /></symbol><symbol id="i-wrench" viewBox="0 0 24 24"><path class="p0" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" /></symbol><symbol id="i-x" viewBox="0 0 24 24"><path class="p0" d="M18 6 6 18" /><path class="p1" d="m6 6 12 12" /></symbol><symbol id="i-zap" viewBox="0 0 24 24"><path class="p0" d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z" /></symbol></svg>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol id="i-arrow-left" viewBox="0 0 24 24"><path class="p0" d="m12 19-7-7 7-7" /><path class="p1" d="M19 12H5" /></symbol><symbol id="i-arrow-right" viewBox="0 0 24 24"><path class="p0" d="M5 12h14" /><path class="p1" d="m12 5 7 7-7 7" /></symbol><symbol id="i-bookmark" viewBox="0 0 24 24"><path class="p0" d="M17 3a2 2 0 0 1 2 2v15a1 1 0 0 1-1.496.868l-4.512-2.578a2 2 0 0 0-1.984 0l-4.512 2.578A1 1 0 0 1 5 20V5a2 2 0 0 1 2-2z" /></symbol><symbol id="i-braces" viewBox="0 0 24 24"><path class="p0" d="M8 3H7a2 2 0 0 0-2 2v5a2 2 0 0 1-2 2 2 2 0 0 1 2 2v5c0 1.1.9 2 2 2h1" /><path class="p1" d="M16 21h1a2 2 0 0 0 2-2v-5c0-1.1.9-2 2-2a2 2 0 0 1-2-2V5a2 2 0 0 0-2-2h-1" /></symbol><symbol id="i-cable" viewBox="0 0 24 24"><path class="p0" d="M17 19a1 1 0 0 1-1-1v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2a1 1 0 0 1-1 1z" /><path class="p1" d="M17 21v-2" /><path class="p2" d="M19 14V6.5a1 1 0 0 0-7 0v11a1 1 0 0 1-7 0V10" /><path class="p3" d="M21 21v-2" /><path class="p4" d="M3 5V3" /><path class="p5" d="M4 10a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2a2 2 0 0 1-2 2z" /><path class="p6" d="M7 5V3" /></symbol><symbol id="i-check" viewBox="0 0 24 24"><path class="p0" d="M20 6 9 17l-5-5" /></symbol><symbol id="i-chevron-down" viewBox="0 0 24 24"><path class="p0" d="m6 9 6 6 6-6" /></symbol><symbol id="i-chevron-left" viewBox="0 0 24 24"><path class="p0" d="m15 18-6-6 6-6" /></symbol><symbol id="i-chevron-right" viewBox="0 0 24 24"><path class="p0" d="m9 18 6-6-6-6" /></symbol><symbol id="i-chevrons-left" viewBox="0 0 24 24"><path class="p0" d="m11 17-5-5 5-5" /><path class="p1" d="m18 17-5-5 5-5" /></symbol><symbol id="i-chevrons-right" viewBox="0 0 24 24"><path class="p0" d="m6 17 5-5-5-5" /><path class="p1" d="m13 17 5-5-5-5" /></symbol><symbol id="i-circle-alert" viewBox="0 0 24 24"><circle class="p0" cx="12" cy="12" r="10" /><line class="p1" x1="12" x2="12" y1="8" y2="12" /><line class="p2" x1="12" x2="12.01" y1="16" y2="16" /></symbol><symbol id="i-circle-check" viewBox="0 0 24 24"><circle class="p0" cx="12" cy="12" r="10" /><path class="p1" d="m9 12 2 2 4-4" /></symbol><symbol id="i-circle-help" viewBox="0 0 24 24"><circle class="p0" cx="12" cy="12" r="10" /><path class="p1" d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" /><path class="p2" d="M12 17h.01" /></symbol><symbol id="i-circle-x" viewBox="0 0 24 24"><circle class="p0" cx="12" cy="12" r="10" /><path class="p1" d="m15 9-6 6" /><path class="p2" d="m9 9 6 6" /></symbol><symbol id="i-columns-3" viewBox="0 0 24 24"><rect class="p0" width="18" height="18" x="3" y="3" rx="2" /><path class="p1" d="M9 3v18" /><path class="p2" d="M15 3v18" /></symbol><symbol id="i-command" viewBox="0 0 24 24"><path class="p0" d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" /></symbol><symbol id="i-copy" viewBox="0 0 24 24"><rect class="p0" width="14" height="14" x="8" y="8" rx="2" ry="2" /><path class="p1" d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></symbol><symbol id="i-database" viewBox="0 0 24 24"><ellipse class="p0" cx="12" cy="5" rx="9" ry="3" /><path class="p1" d="M3 5V19A9 3 0 0 0 21 19V5" /><path class="p2" d="M3 12A9 3 0 0 0 21 12" /></symbol><symbol id="i-download" viewBox="0 0 24 24"><path class="p0" d="M12 15V3" /><path class="p1" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path class="p2" d="m7 10 5 5 5-5" /></symbol><symbol id="i-eye" viewBox="0 0 24 24"><path class="p0" d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle class="p1" cx="12" cy="12" r="3" /></symbol><symbol id="i-file-code-2" viewBox="0 0 24 24"><path class="p0" d="M4 12.15V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.706.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2h-3.35" /><path class="p1" d="M14 2v5a1 1 0 0 0 1 1h5" /><path class="p2" d="m5 16-3 3 3 3" /><path class="p3" d="m9 22 3-3-3-3" /></symbol><symbol id="i-file-spreadsheet" viewBox="0 0 24 24"><path class="p0" d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path class="p1" d="M14 2v4a2 2 0 0 0 2 2h4" /><path class="p2" d="M8 13h2" /><path class="p3" d="M14 13h2" /><path class="p4" d="M8 17h2" /><path class="p5" d="M14 17h2" /></symbol><symbol id="i-file-text" viewBox="0 0 24 24"><path class="p0" d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path class="p1" d="M14 2v4a2 2 0 0 0 2 2h4" /><path class="p2" d="M10 9H8" /><path class="p3" d="M16 13H8" /><path class="p4" d="M16 17H8" /></symbol><symbol id="i-filter" viewBox="0 0 24 24"><path class="p0" d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></symbol><symbol id="i-funnel" viewBox="0 0 24 24"><path class="p0" d="M10 20a1 1 0 0 0 .553.895l2 1A1 1 0 0 0 14 21v-7a2 2 0 0 1 .517-1.341L21.74 4.67A1 1 0 0 0 21 3H3a1 1 0 0 0-.742 1.67l7.225 7.989A2 2 0 0 1 10 14z" /></symbol><symbol id="i-git-branch" viewBox="0 0 24 24"><path class="p0" d="M15 6a9 9 0 0 0-9 9V3" /><circle class="p1" cx="18" cy="6" r="3" /><circle class="p2" cx="6" cy="18" r="3" /></symbol><symbol id="i-grid-2x2" viewBox="0 0 24 24"><path class="p0" d="M12 3v18" /><path class="p1" d="M3 12h18" /><rect class="p2" x="3" y="3" width="18" height="18" rx="2" /></symbol><symbol id="i-history" viewBox="0 0 24 24"><path class="p0" d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path class="p1" d="M3 3v5h5" /><path class="p2" d="M12 7v5l4 2" /></symbol><symbol id="i-import" viewBox="0 0 24 24"><path class="p0" d="M12 3v12" /><path class="p1" d="m8 11 4 4 4-4" /><path class="p2" d="M8 5H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4" /></symbol><symbol id="i-info" viewBox="0 0 24 24"><circle class="p0" cx="12" cy="12" r="10" /><path class="p1" d="M12 16v-4" /><path class="p2" d="M12 8h.01" /></symbol><symbol id="i-key-round" viewBox="0 0 24 24"><path class="p0" d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle class="p1" cx="16.5" cy="7.5" r=".5" fill="currentColor" /></symbol><symbol id="i-layers" viewBox="0 0 24 24"><path class="p0" d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z" /><path class="p1" d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12" /><path class="p2" d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17" /></symbol><symbol id="i-link" viewBox="0 0 24 24"><path class="p0" d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path class="p1" d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></symbol><symbol id="i-loader-circle" viewBox="0 0 24 24"><path class="p0" d="M21 12a9 9 0 1 1-6.219-8.56" /></symbol><symbol id="i-lock" viewBox="0 0 24 24"><rect class="p0" width="18" height="11" x="3" y="11" rx="2" ry="2" /><path class="p1" d="M7 11V7a5 5 0 0 1 10 0v4" /></symbol><symbol id="i-log-out" viewBox="0 0 24 24"><path class="p0" d="m16 17 5-5-5-5" /><path class="p1" d="M21 12H9" /><path class="p2" d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /></symbol><symbol id="i-panel-left" viewBox="0 0 24 24"><rect class="p0" width="18" height="18" x="3" y="3" rx="2" /><path class="p1" d="M9 3v18" /></symbol><symbol id="i-pencil" viewBox="0 0 24 24"><path class="p0" d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path class="p1" d="m15 5 4 4" /></symbol><symbol id="i-play" viewBox="0 0 24 24"><path class="p0" d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z" /></symbol><symbol id="i-plug-zap" viewBox="0 0 24 24"><path class="p0" d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path class="p1" d="m2 22 3-3" /><path class="p2" d="M7.5 13.5 10 11" /><path class="p3" d="M10.5 16.5 13 14" /><path class="p4" d="m18 3-4 4h6l-4 4" /></symbol><symbol id="i-plus" viewBox="0 0 24 24"><path class="p0" d="M5 12h14" /><path class="p1" d="M12 5v14" /></symbol><symbol id="i-refresh-cw" viewBox="0 0 24 24"><path class="p0" d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path class="p1" d="M21 3v5h-5" /><path class="p2" d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path class="p3" d="M8 16H3v5" /></symbol><symbol id="i-rotate-cw" viewBox="0 0 24 24"><path class="p0" d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8" /><path class="p1" d="M21 3v5h-5" /></symbol><symbol id="i-save" viewBox="0 0 24 24"><path class="p0" d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path class="p1" d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path class="p2" d="M7 3v4a1 1 0 0 0 1 1h7" /></symbol><symbol id="i-scan-search" viewBox="0 0 24 24"><path class="p0" d="M3 7V5a2 2 0 0 1 2-2h2" /><path class="p1" d="M17 3h2a2 2 0 0 1 2 2v2" /><path class="p2" d="M21 17v2a2 2 0 0 1-2 2h-2" /><path class="p3" d="M7 21H5a2 2 0 0 1-2-2v-2" /><circle class="p4" cx="12" cy="12" r="3" /><path class="p5" d="m16 16-1.9-1.9" /></symbol><symbol id="i-search" viewBox="0 0 24 24"><path class="p0" d="m21 21-4.34-4.34" /><circle class="p1" cx="11" cy="11" r="8" /></symbol><symbol id="i-server" viewBox="0 0 24 24"><rect class="p0" width="20" height="8" x="2" y="2" rx="2" ry="2" /><rect class="p1" width="20" height="8" x="2" y="14" rx="2" ry="2" /><line class="p2" x1="6" x2="6.01" y1="6" y2="6" /><line class="p3" x1="6" x2="6.01" y1="18" y2="18" /></symbol><symbol id="i-settings" viewBox="0 0 24 24"><path class="p0" d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915" /><circle class="p1" cx="12" cy="12" r="3" /></symbol><symbol id="i-shield-alert" viewBox="0 0 24 24"><path class="p0" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path class="p1" d="M12 8v4" /><path class="p2" d="M12 16h.01" /></symbol><symbol id="i-shield-check" viewBox="0 0 24 24"><path class="p0" d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path class="p1" d="m9 12 2 2 4-4" /></symbol><symbol id="i-sparkles" viewBox="0 0 24 24"><path class="p0" d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z" /><path class="p1" d="M20 2v4" /><path class="p2" d="M22 4h-4" /><circle class="p3" cx="4" cy="20" r="2" /></symbol><symbol id="i-square-pen" viewBox="0 0 24 24"><path class="p0" d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path class="p1" d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" /></symbol><symbol id="i-star" viewBox="0 0 24 24"><path class="p0" d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z" /></symbol><symbol id="i-table" viewBox="0 0 24 24"><path class="p0" d="M12 3v18" /><rect class="p1" width="18" height="18" x="3" y="3" rx="2" /><path class="p2" d="M3 9h18" /><path class="p3" d="M3 15h18" /></symbol><symbol id="i-table-2" viewBox="0 0 24 24"><path class="p0" d="M9 3H5a2 2 0 0 0-2 2v4m6-6h10a2 2 0 0 1 2 2v4M9 3v18m0 0h10a2 2 0 0 0 2-2V9M9 21H5a2 2 0 0 1-2-2V9m0 0h18" /></symbol><symbol id="i-terminal" viewBox="0 0 24 24"><path class="p0" d="M12 19h8" /><path class="p1" d="m4 17 6-6-6-6" /></symbol><symbol id="i-text-cursor-input" viewBox="0 0 24 24"><path class="p0" d="M12 20h-1a2 2 0 0 1-2-2 2 2 0 0 1-2 2H6" /><path class="p1" d="M13 8h7a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-7" /><path class="p2" d="M5 16H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h1" /><path class="p3" d="M6 4h1a2 2 0 0 1 2 2 2 2 0 0 1 2-2h1" /><path class="p4" d="M9 6v12" /></symbol><symbol id="i-trash-2" viewBox="0 0 24 24"><path class="p0" d="M10 11v6" /><path class="p1" d="M14 11v6" /><path class="p2" d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path class="p3" d="M3 6h18" /><path class="p4" d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></symbol><symbol id="i-triangle-alert" viewBox="0 0 24 24"><path class="p0" d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path class="p1" d="M12 9v4" /><path class="p2" d="M12 17h.01" /></symbol><symbol id="i-unplug" viewBox="0 0 24 24"><path class="p0" d="m19 5 3-3" /><path class="p1" d="m2 22 3-3" /><path class="p2" d="M6.3 20.3a2.4 2.4 0 0 0 3.4 0L12 18l-6-6-2.3 2.3a2.4 2.4 0 0 0 0 3.4Z" /><path class="p3" d="M7.5 13.5 10 11" /><path class="p4" d="M10.5 16.5 13 14" /><path class="p5" d="m12 6 6 6 2.3-2.3a2.4 2.4 0 0 0 0-3.4l-2.6-2.6a2.4 2.4 0 0 0-3.4 0Z" /></symbol><symbol id="i-upload" viewBox="0 0 24 24"><path class="p0" d="M12 3v12" /><path class="p1" d="m17 8-5-5-5 5" /><path class="p2" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /></symbol><symbol id="i-waypoints" viewBox="0 0 24 24"><path class="p0" d="m10.586 5.414-5.172 5.172" /><path class="p1" d="m18.586 13.414-5.172 5.172" /><path class="p2" d="M6 12h12" /><circle class="p3" cx="12" cy="20" r="2" /><circle class="p4" cx="12" cy="4" r="2" /><circle class="p5" cx="20" cy="12" r="2" /><circle class="p6" cx="4" cy="12" r="2" /></symbol><symbol id="i-wrench" viewBox="0 0 24 24"><path class="p0" d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z" /></symbol><symbol id="i-x" viewBox="0 0 24 24"><path class="p0" d="M18 6 6 18" /><path class="p1" d="m6 6 12 12" /></symbol><symbol id="i-zap" viewBox="0 0 24 24"><path class="p0" d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z" /></symbol></svg>
 <div id="toasts" aria-live="polite" aria-atomic="false"></div>
 
 <?php if (!is_logged_in()): ?>
@@ -6006,7 +6209,29 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
         </div>
         <div class="sql-bar">
           <button type="submit" name="execute_sql" value="1" class="btn btn-primary btn-sm hov"><?php echo ico('play'); ?> <?php echo h(__('execute_query')); ?> <kbd>Ctrl&nbsp;&#9166;</kbd></button>
-          <button type="submit" name="export_query" value="1" class="btn btn-default btn-sm hov"><?php echo ico('download'); ?> <?php echo h(__('export_query')); ?></button>
+          <div class="dropdown">
+            <button type="button" class="btn btn-default btn-sm hov" data-dropdown>
+              <?php echo ico('download'); ?> <span>Export Result</span> <?php echo ico('chevron-down', '', 11); ?>
+            </button>
+            <div class="dropdown-menu">
+              <button type="submit" name="export_result_format" value="csv" class="dropdown-item">
+                <?php echo ico('file-spreadsheet'); ?> <span>Export as CSV</span> <span class="badge">.csv</span>
+              </button>
+              <button type="submit" name="export_result_format" value="json" class="dropdown-item">
+                <?php echo ico('braces'); ?> <span>Export as JSON</span> <span class="badge">.json</span>
+              </button>
+              <button type="submit" name="export_result_format" value="sql" class="dropdown-item">
+                <?php echo ico('database'); ?> <span>Export as SQL</span> <span class="badge">.sql</span>
+              </button>
+              <button type="submit" name="export_result_format" value="xml" class="dropdown-item">
+                <?php echo ico('file-code-2'); ?> <span>Export as XML</span> <span class="badge">.xml</span>
+              </button>
+              <div class="dropdown-divider"></div>
+              <button type="submit" name="export_query" value="1" class="dropdown-item">
+                <?php echo ico('file-text'); ?> <span>Save query script</span> <span class="badge">.sql</span>
+              </button>
+            </div>
+          </div>
           <button type="button" class="btn btn-ghost btn-sm hov" id="sqlFormat"><?php echo ico('braces'); ?> Format</button>
           <span class="right flex">
             <select id="sqlHistory" class="input-sm" style="width:auto;max-width:190px"><option value="">History&hellip;</option></select>
@@ -6031,11 +6256,39 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
       <?php endif; ?>
       <?php foreach ($sql_batches as $i => $b): ?>
         <div class="rt-pane <?php echo $i === 0 ? '' : 'hidden'; ?>" data-rt="<?php echo $i; ?>">
-          <div class="card-head">
-            <h3 class="mono small ellipsis" style="max-width:60%"><?php echo h(mb_substr($b['sql'], 0, 120)); ?></h3>
-            <span class="right"><?php echo $b['ms']; ?> ms
-              <?php if ($b['rows'] !== null): ?>&middot; <?php echo count($b['rows']); ?> rows<?php endif; ?>
-              <?php if ($b['truncated']): ?><span class="badge badge-warn">first 1000 shown</span><?php endif; ?></span>
+          <div class="card-head" style="align-items:center;flex-wrap:wrap;gap:8px">
+            <h3 class="mono small ellipsis" style="max-width:55%"><?php echo h(mb_substr($b['sql'], 0, 120)); ?></h3>
+            <span class="right flex" style="align-items:center;gap:10px">
+              <span class="muted small"><?php echo $b['ms']; ?> ms
+                <?php if ($b['rows'] !== null): ?>&middot; <?php echo count($b['rows']); ?> rows<?php endif; ?>
+                <?php if ($b['truncated']): ?>&middot; <span class="badge badge-warn">first 1000 shown</span><?php endif; ?></span>
+              <?php if ($b['rows'] !== null && count($b['rows']) > 0): ?>
+                <div class="dropdown">
+                  <button type="button" class="btn btn-default btn-sm hov" data-dropdown>
+                    <?php echo ico('download'); ?> <span>Export</span> <?php echo ico('chevron-down', '', 11); ?>
+                  </button>
+                  <div class="dropdown-menu">
+                    <form method="post" style="display:contents">
+                      <input type="hidden" name="csrf_token" value="<?php echo h($csrf); ?>">
+                      <input type="hidden" name="action" value="export_query_result">
+                      <input type="hidden" name="query_sql" value="<?php echo h($b['sql']); ?>">
+                      <button type="submit" name="export_format" value="csv" class="dropdown-item">
+                        <?php echo ico('file-spreadsheet'); ?> <span>CSV file</span> <span class="badge">.csv</span>
+                      </button>
+                      <button type="submit" name="export_format" value="json" class="dropdown-item">
+                        <?php echo ico('braces'); ?> <span>JSON array</span> <span class="badge">.json</span>
+                      </button>
+                      <button type="submit" name="export_format" value="sql" class="dropdown-item">
+                        <?php echo ico('database'); ?> <span>SQL inserts</span> <span class="badge">.sql</span>
+                      </button>
+                      <button type="submit" name="export_format" value="xml" class="dropdown-item">
+                        <?php echo ico('file-code-2'); ?> <span>XML format</span> <span class="badge">.xml</span>
+                      </button>
+                    </form>
+                  </div>
+                </div>
+              <?php endif; ?>
+            </span>
           </div>
           <?php if ($b['error']): ?>
             <div style="padding:14px"><div class="alert alert-error" style="margin:0"><?php echo ico('circle-alert'); ?><div><?php echo h($b['error']); ?></div></div></div>
@@ -6253,6 +6506,18 @@ document.addEventListener('click', function (e) {
     if (e.target.classList && e.target.classList.contains('modal')) closeModal(e.target);
 });
 
+// ─── Dropdowns ─────────────────────────────────────────────────────────────
+document.addEventListener('click', function (e) {
+    var toggle = e.target.closest('[data-dropdown]');
+    var currentDd = toggle ? toggle.closest('.dropdown') : null;
+    $$('.dropdown.open').forEach(function (d) {
+        if (d !== currentDd) d.classList.remove('open');
+    });
+    if (currentDd) {
+        currentDd.classList.toggle('open');
+    }
+});
+
 // ─── Confirmation (replaces window.confirm) ─────────────────────────────────
 // Destructive actions get a real dialog; the most destructive also require the
 // object's name to be typed, so a stray click cannot drop a table.
@@ -6312,6 +6577,7 @@ document.addEventListener('click', function (e) {
 // ─── Global keys ─────────────────────────────────────────────────────────────
 document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape') {
+        $$('.dropdown.open').forEach(function (d) { d.classList.remove('open'); });
         var pal = $('#palette');
         if (pal && pal.classList.contains('open')) { closePalette(); return; }
         var open = $('.modal.open');
