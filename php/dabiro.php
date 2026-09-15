@@ -3143,8 +3143,14 @@ if ($action !== '' && is_ajax_action($action)) {
             $keys = json_decode((string)get_post('keys'), true) ?: [];
             if ($t === '' || $col === '') json_out(['ok' => false, 'error' => 'Missing table or column.'], 400);
 
+            $post_db = get_post('db', get_get('db', ''));
+            $post_schema = get_post('schema', get_get('schema', ''));
+            if ($post_db !== '' || $post_schema !== '') {
+                focus_connection($db, $post_db, $post_schema);
+            }
+
             list($where, $params, $hasPk) = row_identity($db, $t, $keys);
-            if (!$hasPk) json_out(['ok' => false, 'error' => 'This table has no primary key, so rows cannot be edited inline.'], 400);
+            if (!$hasPk && empty($keys)) json_out(['ok' => false, 'error' => 'This table has no primary key, so rows cannot be edited inline.'], 400);
             try {
                 $st = $db->run(
                     'UPDATE ' . $db->qualify($t) . ' SET ' . $db->quoteIdentifier($col) . ' = ' .
@@ -6552,7 +6558,12 @@ if (grid && grid.getAttribute('data-haspk') === '1') {
             body.set('column', col);
             body.set('value', val);
             body.set('keys', tr.getAttribute('data-keys'));
-            fetch('?action=cell_update', {
+            if (CTX.db) body.set('db', CTX.db);
+            if (CTX.schema) body.set('schema', CTX.schema);
+            var q = '?action=cell_update' +
+                (CTX.db ? '&db=' + encodeURIComponent(CTX.db) : '') +
+                (CTX.schema ? '&schema=' + encodeURIComponent(CTX.schema) : '');
+            fetch(q, {
                 method: 'POST', credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest' },
                 body: body.toString()
