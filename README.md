@@ -224,6 +224,13 @@ edition or an external tunnel.
 
 **Node: SSH tab disabled** — run `npm install ssh2`.
 
+**"Security token validation failed. Please reload the page and try again."** — the CSRF token submitted did not match the session.
+- **Running locally on plain HTTP (`http://localhost` or `http://127.0.0.1`)**: If the session cookie is marked `Secure`, modern browsers will silently drop it over plain HTTP, causing every request to start a fresh session.
+  - **PHP (`php/dabiro.php`)**: Ensure `'secure' => false` in `session_set_cookie_params()` when testing over plain HTTP if `request_is_https()` misdetects HTTPS.
+  - **Node.js (`node/dabiro.js`)**: Ensure `cookie: { secure: false }` under `app.use(session(...))` when testing without TLS.
+  - **Behind a reverse proxy / SSL terminator**: Set `DABIRO_TRUST_PROXY=1` and pass `X-Forwarded-Proto $scheme;` so Dabiro properly detects HTTPS.
+  - **Stale token**: If the tab was open for longer than the session timeout (1 hour), perform a hard refresh (`Ctrl`+`F5` / `Cmd`+`Shift`+`R`).
+
 **Stuck in a login loop** - you sign in, and land straight back on the login
 screen. Dabiro detects this and explains the cause on the login page itself. The
 usual reason is the session cookie being marked `Secure` while the browser is on

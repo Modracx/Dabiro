@@ -51,6 +51,14 @@ function request_is_https()
 }
 
 if (session_status() === PHP_SESSION_NONE) {
+    $save_path = session_save_path();
+    if (empty($save_path) || !@is_dir($save_path) || !@is_writable($save_path)) {
+        $data_dir = DABIRO_DATA_DIR;
+        $fallback = (is_dir($data_dir) && is_writable($data_dir)) ? $data_dir : sys_get_temp_dir();
+        if (is_dir($fallback) && is_writable($fallback)) {
+            @session_save_path($fallback);
+        }
+    }
     session_set_cookie_params([
         'path'     => '/',
         'httponly' => true,
@@ -58,6 +66,7 @@ if (session_status() === PHP_SESSION_NONE) {
         'secure'   => request_is_https(),
     ]);
     session_start();
+    generate_csrf_token();
 }
 
 /**
