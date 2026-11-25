@@ -5877,16 +5877,15 @@ input[type=checkbox], input[type=radio] { width: auto; accent-color: var(--accen
               <a href="<?php echo h($delUrl); ?>" class="btn btn-ghost btn-icon btn-sm hov" data-confirm="Delete this row? This cannot be undone." title="Delete row"><?php echo ico('trash-2', 'ico-trash-2'); ?></a>
             </td>
             <?php foreach ($cols as $c): $f = $c['Field']; $v = $row[$f] ?? null; ?>
-              <td class="cell<?php echo (is_int($v) || is_float($v)) ? ' cell-num' : ''; ?>" data-col="<?php echo h($f); ?>">
-                <?php if ($v === null): ?>
-                  <span class="badge badge-null">NULL</span>
-                <?php else:
+              <?php /* No whitespace inside the <td>: inline editing reads its textContent as the value. */ ?>
+              <td class="cell<?php echo (is_int($v) || is_float($v)) ? ' cell-num' : ''; ?>" data-col="<?php echo h($f); ?>"><?php
+                if ($v === null):
+                  echo '<span class="badge badge-null">NULL</span>';
+                else:
                   $t = truncate_cell((string)$v);
-                  if ($t['truncated']): ?>
-                    <span title="<?php echo h(mb_substr((string)$v, 0, 2000)); ?>"><?php echo h($t['text']); ?><span class="faint">&hellip;</span></span>
-                  <?php else: echo h($t['text']); endif;
-                endif; ?>
-              </td>
+                  if ($t['truncated']): ?><span title="<?php echo h(mb_substr((string)$v, 0, 2000)); ?>"><?php echo h($t['text']); ?><span class="faint">&hellip;</span></span><?php
+                  else: echo h($t['text']); endif;
+                endif; ?></td>
             <?php endforeach; ?>
           </tr>
         <?php endforeach; ?>
